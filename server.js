@@ -26,7 +26,9 @@ const app = express();
 app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY || "bossbot-download-key";
-const youtubedl = createYoutubeDl(process.env.YT_DLP_PATH || "yt-dlp");
+function getYoutubeDl() {
+  return createYoutubeDl(process.env.YT_DLP_PATH || "yt-dlp");
+}
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors({ origin: "*" }));
@@ -69,19 +71,41 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 // ── Helper: run yt-dlp ────────────────────────────────────────────────────────
-function ytdlp(args) {
-  return new Promise((resolve, reject) => {
-    const proc = youtubedl.exec(...args, { timeout: 120000 });
-    let stdout = "";
-    let stderr = "";
-    proc.stdout.on("data", (d) => (stdout += d.toString()));
-    proc.stderr.on("data", (d) => (stderr += d.toString()));
-    proc.on("close", (code) => {
-      if (code === 0) resolve(stdout.trim());
-      else reject(new Error(stderr.trim() || `yt-dlp exited ${code}`));
+function ytdlp(commandArgs) {
+  const [url, ...rawFlags] = commandArgs;
+  const flags = {};
+  const isFlagToken = (token) => /^--[a-zA-Z][a-zA-Z0-9-]*$/.test(token);
+
+  if (!url) {
+    return Promise.reject(new Error("yt-dlp url is required"));
+  }
+
+  for (let i = 0; i < rawFlags.length; i++) {
+    const token = rawFlags[i];
+    if (!isFlagToken(token)) {
+      return Promise.reject(new Error(`Unexpected yt-dlp argument: ${token}`));
+    }
+
+    const key = token.replace(/^-+/, "");
+    const next = rawFlags[i + 1];
+    const hasValue = next !== undefined && !isFlagToken(next);
+    const value = hasValue ? next : true;
+
+    if (Object.prototype.hasOwnProperty.call(flags, key)) {
+      flags[key] = [].concat(flags[key], value);
+    } else {
+      flags[key] = value;
+    }
+
+    if (hasValue) i++;
+  }
+
+  return getYoutubeDl()
+    .exec(url, flags, { timeout: 120000 })
+    .then(({ stdout }) => stdout.trim())
+    .catch((err) => {
+      throw new Error(err.stderr?.trim() || err.message || "yt-dlp execution failed");
     });
-    proc.on("error", reject);
-  });
 }
 
 // ── Helper: stream file to response then delete ───────────────────────────────
@@ -169,8 +193,8 @@ app.post("/download/youtube", auth, async (req, res) => {
 
     const args = [
       url,
-      "-f", fmtSelector,
-      "-o", outFile,
+      "--format", fmtSelector,
+      "--output", outFile,
       "--no-playlist",
       "--max-filesize", "200m",
       "--user-agent", "Mozilla/5.0",
@@ -178,7 +202,7 @@ app.post("/download/youtube", auth, async (req, res) => {
     ];
 
     if (format === "mp3") {
-      args.push("-x", "--audio-format", "mp3", "--audio-quality", "0");
+      args.push("--extract-audio", "--audio-format", "mp3", "--audio-quality", "0");
     }
 
     await ytdlp(args);
@@ -224,9 +248,9 @@ app.post("/download/audio", auth, async (req, res) => {
   try {
     await ytdlp([
       url,
-      "-x", "--audio-format", "mp3",
+      "--extract-audio", "--audio-format", "mp3",
       "--audio-quality", "0",
-      "-o", outFile,
+      "--output", outFile,
       "--no-playlist",
       "--max-filesize", "50m",
       "--user-agent", "Mozilla/5.0",
@@ -247,8 +271,8 @@ app.post("/download/facebook", auth, async (req, res) => {
 
   try {
     await ytdlp([
-      url, "-f", "best[ext=mp4]/best",
-      "-o", outFile,
+      url, "--format", "best[ext=mp4]/best",
+      "--output", outFile,
       "--no-playlist",
       "--max-filesize", "100m",
     ]);
@@ -274,8 +298,8 @@ app.post("/download/instagram", auth, async (req, res) => {
 
   try {
     await ytdlp([
-      url, "-f", "best",
-      "-o", outFile,
+      url, "--format", "best",
+      "--output", outFile,
       "--no-playlist",
       "--max-filesize", "100m",
     ]);
@@ -301,8 +325,8 @@ app.post("/download/tiktok", auth, async (req, res) => {
 
   try {
     await ytdlp([
-      url, "-f", "best",
-      "-o", outFile,
+      url, "--format", "best",
+      "--output", outFile,
       "--no-playlist",
       "--max-filesize", "100m",
       // TikTok needs cookies sometimes, try without first
@@ -328,8 +352,8 @@ app.post("/download/twitter", auth, async (req, res) => {
 
   try {
     await ytdlp([
-      url, "-f", "best[ext=mp4]/best",
-      "-o", outFile,
+      url, "--format", "best[ext=mp4]/best",
+      "--output", outFile,
       "--no-playlist",
       "--max-filesize", "100m",
     ]);
