@@ -1,8 +1,5 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "yt-dlp", "ffmpeg", "python3"]
-
-[phases.install]
-cmds = ["npm install"]
+nixPkgs = ["yt-dlp", "ffmpeg", "python3"]
 
 [start]
 cmd = "node server.js"
