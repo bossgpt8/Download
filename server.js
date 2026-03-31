@@ -23,9 +23,9 @@ const https = require("https");
 const http = require("http");
 
 const app = express();
+app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY || "bossbot-download-key";
-app.set("trust proxy", 1);
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors({ origin: "*" }));
