@@ -1,5 +1,8 @@
 [phases.setup]
 nixPkgs = ["yt-dlp", "ffmpeg", "python3"]
 
+[phases.install]
+cmds = ["YOUTUBE_DL_SKIP_DOWNLOAD=true npm install"]
+
 [start]
 cmd = "node server.js"
