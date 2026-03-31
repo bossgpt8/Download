@@ -41,7 +41,7 @@ fs.chmodSync(STUB_PATH, 0o755);
 
 // ── Configure server via env before require ───────────────────────────────────
 const TEST_PORT = 19847;
-const TEST_KEY = "@SHINDARA1i"; // mirrors the key used in the problem statement
+const TEST_KEY = "@SHINDARA1i"; // sample API key used for testing; set API_KEY=<this> in your Railway env
 
 process.env.PORT = String(TEST_PORT);
 process.env.API_KEY = TEST_KEY;
@@ -74,6 +74,25 @@ function get(urlPath) {
   });
 }
 
+function getWithHeaders(urlPath, headers) {
+  return new Promise((resolve, reject) => {
+    const opts = {
+      hostname: "127.0.0.1",
+      port: TEST_PORT,
+      path: urlPath,
+      method: "GET",
+      headers,
+    };
+    const req = http.request(opts, (res) => {
+      let body = "";
+      res.on("data", (chunk) => (body += chunk));
+      res.on("end", () => resolve({ status: res.statusCode, body, headers: res.headers }));
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 describe("Boss-Bot Download Server", () => {
   let srv;
@@ -86,13 +105,29 @@ describe("Boss-Bot Download Server", () => {
 
   // ── GET / ──────────────────────────────────────────────────────────────────
   describe("GET /", () => {
-    it("returns health-check JSON with status ok", async () => {
-      const { status, body } = await get("/");
+    it("returns HTML test page by default (browser request)", async () => {
+      const { status, body, headers } = await getWithHeaders("/", { accept: "text/html" });
+      assert.strictEqual(status, 200);
+      assert.ok(headers["content-type"]?.includes("text/html"), "should be HTML");
+      assert.ok(body.includes("Boss-Bot Download Server"), "should contain server name");
+      assert.ok(body.includes("/info"), "should reference /info endpoint");
+      assert.ok(body.includes("testInfo"), "should include the JS test function");
+    });
+
+    it("returns JSON health-check when Accept is application/json", async () => {
+      const { status, body: raw } = await getWithHeaders("/", { accept: "application/json" });
+      const body = JSON.parse(raw);
       assert.strictEqual(status, 200);
       assert.strictEqual(body.status, "ok");
       assert.strictEqual(body.service, "Boss-Bot Download Server");
       assert.ok(Array.isArray(body.endpoints), "endpoints should be an array");
       assert.ok(body.endpoints.includes("/info"), "endpoints should include /info");
+    });
+
+    it("returns JSON health-check when ?format=json is specified", async () => {
+      const { status, body } = await get("/?format=json");
+      assert.strictEqual(status, 200);
+      assert.strictEqual(body.status, "ok");
     });
   });
 

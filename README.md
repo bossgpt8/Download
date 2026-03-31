@@ -75,6 +75,16 @@ POST /download/twitter    { "url": "..." }
 
 ## Testing
 
+### Browser test UI
+
+Navigate to your server's root URL in any browser — it now serves a built-in test page:
+
+```
+https://boss-download-server-production.up.railway.app/
+```
+
+The page shows server status, all available endpoints, a form to call `/info` (enter a video URL and your API key, click **Fetch info**), and copy-paste curl examples.
+
 ### Quick curl test against the live server
 
 ```bash
@@ -96,6 +106,14 @@ A successful response looks like:
 ```
 
 An `{ "error": "Unauthorized — invalid API key" }` response means the `key` param does not match the `API_KEY` you set in Railway.
+
+### JSON health check (for API clients)
+
+Add `?format=json` or send `Accept: application/json` to get the JSON health object instead of the HTML page:
+
+```bash
+curl "https://boss-download-server-production.up.railway.app/?format=json"
+```
 
 ### Run the automated test suite locally
 

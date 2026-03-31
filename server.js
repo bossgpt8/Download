@@ -131,14 +131,107 @@ function streamAndDelete(filePath, res, filename, mimetype) {
 }
 
 // ── Health check ─────────────────────────────────────────────────────────────
+const HEALTH_DATA = () => ({
+  status: "ok",
+  service: "Boss-Bot Download Server",
+  version: "1.0.0",
+  uptime: Math.floor(process.uptime()),
+  endpoints: ["/download/youtube", "/download/audio", "/download/facebook", "/download/instagram", "/download/tiktok", "/download/twitter", "/info"],
+});
+
 app.get("/", (req, res) => {
-  res.json({
-    status: "ok",
-    service: "Boss-Bot Download Server",
-    version: "1.0.0",
-    uptime: Math.floor(process.uptime()),
-    endpoints: ["/download/youtube", "/download/audio", "/download/facebook", "/download/instagram", "/download/tiktok", "/download/twitter", "/info"],
-  });
+  // JSON response for API clients
+  if (req.headers.accept?.includes("application/json") || req.query.format === "json") {
+    return res.json(HEALTH_DATA());
+  }
+
+  // Browser-friendly HTML test page
+  const data = HEALTH_DATA();
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Boss-Bot Download Server</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; background: #0d1117; color: #e6edf3; }
+    h1 { color: #58a6ff; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; background: #238636; color: #fff; font-size: 13px; }
+    label { display: block; margin: 8px 0 4px; font-size: 14px; color: #8b949e; }
+    input { width: 100%; box-sizing: border-box; padding: 8px 10px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; color: #e6edf3; font-size: 14px; }
+    button { margin-top: 12px; padding: 8px 20px; background: #238636; border: none; border-radius: 6px; color: #fff; cursor: pointer; font-size: 14px; }
+    button:hover { background: #2ea043; }
+    pre { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 16px; overflow-x: auto; font-size: 13px; white-space: pre-wrap; word-break: break-all; }
+    .section { margin: 24px 0; }
+    .endpoint { display: inline-block; background: #161b22; border: 1px solid #30363d; border-radius: 4px; padding: 2px 8px; font-family: monospace; font-size: 13px; margin: 3px 2px; }
+    .error { color: #f85149; }
+    .loading { color: #8b949e; }
+  </style>
+</head>
+<body>
+  <h1>🤖 Boss-Bot Download Server</h1>
+  <p><span class="badge">● online</span> &nbsp; uptime: ${data.uptime}s &nbsp; v${data.version}</p>
+
+  <div class="section">
+    <strong>Available endpoints</strong><br>
+    ${data.endpoints.map(e => `<span class="endpoint">${e}</span>`).join("")}
+  </div>
+
+  <div class="section">
+    <h2 style="font-size:16px;color:#58a6ff">🔍 Test /info endpoint</h2>
+    <label for="url">Video URL</label>
+    <input id="url" type="url" placeholder="https://youtu.be/...">
+    <label for="key">API Key</label>
+    <input id="key" type="text" placeholder="your-api-key">
+    <button onclick="testInfo()">Fetch info</button>
+    <pre id="result" style="display:none"></pre>
+  </div>
+
+  <div class="section">
+    <details>
+      <summary style="cursor:pointer;color:#8b949e;font-size:13px">curl examples</summary>
+      <pre># Info (GET)
+curl "${req.protocol}://${req.get("host")}/info?url=URL&amp;key=YOUR_KEY"
+
+# Download YouTube video (POST)
+curl -X POST "${req.protocol}://${req.get("host")}/download/youtube" \\
+  -H "x-api-key: YOUR_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"url":"https://youtu.be/...","quality":"720p"}' \\
+  --output video.mp4
+
+# Extract audio (POST)
+curl -X POST "${req.protocol}://${req.get("host")}/download/audio" \\
+  -H "x-api-key: YOUR_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"url":"https://youtu.be/..."}' \\
+  --output audio.mp3</pre>
+    </details>
+  </div>
+
+  <script>
+    async function testInfo() {
+      const url = document.getElementById("url").value.trim();
+      const key = document.getElementById("key").value.trim();
+      const out = document.getElementById("result");
+      if (!url || !key) { out.style.display="block"; out.className="error"; out.textContent="Please fill in both URL and API Key."; return; }
+      out.style.display = "block";
+      out.className = "loading";
+      out.textContent = "Loading…";
+      try {
+        const r = await fetch("/info?url=" + encodeURIComponent(url) + "&key=" + encodeURIComponent(key));
+        const data = await r.json();
+        out.className = r.ok ? "" : "error";
+        out.textContent = JSON.stringify(data, null, 2);
+      } catch (e) {
+        out.className = "error";
+        out.textContent = "Request failed: " + e.message;
+      }
+    }
+  </script>
+</body>
+</html>`);
 });
 
 // ── GET /info — get video info without downloading ────────────────────────────
