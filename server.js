@@ -16,7 +16,7 @@
 const express = require("express");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
-const { execFile, spawn } = require("child_process");
+const { create: createYoutubeDl } = require("youtube-dl-exec");
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
@@ -26,6 +26,7 @@ const app = express();
 app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY || "bossbot-download-key";
+const youtubedl = createYoutubeDl(process.env.YT_DLP_PATH || "yt-dlp");
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors({ origin: "*" }));
@@ -70,7 +71,7 @@ setInterval(() => {
 // ── Helper: run yt-dlp ────────────────────────────────────────────────────────
 function ytdlp(args) {
   return new Promise((resolve, reject) => {
-    const proc = spawn("yt-dlp", args, { timeout: 120000 });
+    const proc = youtubedl.exec(...args, { timeout: 120000 });
     let stdout = "";
     let stderr = "";
     proc.stdout.on("data", (d) => (stdout += d.toString()));
