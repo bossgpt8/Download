@@ -73,6 +73,38 @@ POST /download/tiktok     { "url": "..." }
 POST /download/twitter    { "url": "..." }
 ```
 
+## Testing
+
+### Quick curl test against the live server
+
+```bash
+# Replace YOUR_KEY with your API_KEY value set in Railway Variables
+curl "https://boss-download-server-production.up.railway.app/info?url=https%3A%2F%2Fyoutu.be%2FwO1282na3w4&key=YOUR_KEY"
+```
+
+A successful response looks like:
+
+```json
+{
+  "title": "Video Title",
+  "duration": 123,
+  "thumbnail": "https://...",
+  "uploader": "ChannelName",
+  "view_count": 1000000,
+  "formats": [...]
+}
+```
+
+An `{ "error": "Unauthorized — invalid API key" }` response means the `key` param does not match the `API_KEY` you set in Railway.
+
+### Run the automated test suite locally
+
+```bash
+npm test
+```
+
+The test suite starts the server on a local port, uses a stub yt-dlp binary (no real network calls), and exercises the health-check and `/info` endpoint — including auth rejection and missing-param validation.
+
 ## Railway Free Tier Limits
 - 512MB RAM
 - $5 free credit/month (enough for ~500 downloads)

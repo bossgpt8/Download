@@ -68,7 +68,7 @@ setInterval(() => {
       }
     }
   } catch {}
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref();
 
 // ── Helper: run yt-dlp ────────────────────────────────────────────────────────
 function ytdlp(commandArgs) {
@@ -370,7 +370,11 @@ app.post("/download/twitter", auth, async (req, res) => {
 });
 
 // ── Start server ──────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`✅ Boss-Bot Download Server running on port ${PORT}`);
-  console.log(`🔑 API Key: ${API_KEY}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`✅ Boss-Bot Download Server running on port ${PORT}`);
+    console.log(`🔑 API Key: ${API_KEY}`);
+  });
+}
+
+module.exports = app;
