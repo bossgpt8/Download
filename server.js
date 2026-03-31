@@ -104,7 +104,7 @@ function ytdlp(commandArgs) {
     .exec(url, flags, { timeout: 120000 })
     .then(({ stdout }) => stdout.trim())
     .catch((err) => {
-      throw new Error(err.stderr?.trim() || err.message || "yt-dlp execution failed");
+      throw new Error(err.stderr?.trim() || err.message || `yt-dlp execution failed for URL: ${url}`);
     });
 }
 
