@@ -1,6 +1,6 @@
 /**
  * Boss-Bot Download Server
- * Deploy on Railway — has yt-dlp + ffmpeg natively
+ * Deploy on Railway — uses a bundled yt-dlp binary plus ffmpeg
  *
  * Endpoints:
  *   GET  /                    — health check

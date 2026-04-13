@@ -129,7 +129,7 @@ The test suite starts the server on a local port, uses a stub yt-dlp binary (no 
 - Auto-sleeps after inactivity (wakes in ~2 seconds)
 
 ## Why Railway works (vs other platforms)
-- **Railway** = real Linux container with Nix → yt-dlp + ffmpeg install natively ✅
+- **Railway** = real Linux container with Nix → ffmpeg from Nix and a bundled yt-dlp binary from `youtube-dl-exec` ✅
 - **Vercel** = serverless, no system packages, 10s timeout ❌
 - **Render** = works but slower cold starts
 - **Heroku** = works with buildpacks but costs money
