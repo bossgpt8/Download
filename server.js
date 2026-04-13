@@ -248,6 +248,14 @@ function ytdlp(commandArgs, options = {}) {
   return runYtDlp(args);
 }
 
+function lastNonEmptyLine(text) {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .pop();
+}
+
 // ── Helper: stream file to response then delete ───────────────────────────────
 function streamAndDelete(filePath, res, filename, mimetype) {
   if (!fs.existsSync(filePath)) {
@@ -406,15 +414,16 @@ app.get("/info", auth, async (req, res) => {
 
 // ── POST /download/youtube ────────────────────────────────────────────────────
 app.post("/download/youtube", auth, async (req, res) => {
-  const { url, quality = "best", format = "mp4" } = req.body;
+  const { url, quality = "best", format = "mp4", output = "video" } = req.body;
   if (!url) return res.status(400).json({ error: "url is required" });
 
   const outFile = path.join(TMP_DIR, `yt_${Date.now()}.%(ext)s`);
+  const wantsAudio = quality === "audio" || format === "mp3" || output === "audio";
 
   try {
     // Select format based on quality
     let fmtSelector = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best";
-    if (quality === "audio" || format === "mp3") {
+    if (wantsAudio) {
       fmtSelector = "bestaudio/best";
     } else if (quality === "360p") {
       fmtSelector = "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[height<=360]";
@@ -431,41 +440,24 @@ app.post("/download/youtube", auth, async (req, res) => {
       "--no-playlist",
       "--max-filesize", "200m",
       "--user-agent", "Mozilla/5.0",
+      "--print", "after_move:filepath",
       "--merge-output-format", "mp4",
     ];
 
-    if (format === "mp3") {
+    if (wantsAudio) {
       args.push("--extract-audio", "--audio-format", "mp3", "--audio-quality", "0");
+    } else {
+      args.push("--recode-video", "mp4");
     }
 
-    await ytdlp(args);
+    const stdout = await ytdlp(args);
+    const finalPath = lastNonEmptyLine(stdout);
+    if (!finalPath) return res.status(500).json({ error: "Output file not found" });
 
-    // Find the actual output file (yt-dlp replaces %(ext)s)
-    const files = fs.readdirSync(TMP_DIR).filter((f) => f.startsWith(`yt_${Date.now().toString().slice(0, -3)}`));
-    const actualFile = path.join(TMP_DIR, files[0] || "");
-
-    // Try to find by pattern
-    const allFiles = fs.readdirSync(TMP_DIR);
-    const outBase = path.basename(outFile).replace(".%(ext)s", "");
-    const match = allFiles.find((f) => f.includes(outBase.replace(".%(ext)s", "")));
-
-    if (!match) {
-      // Find newest file in tmp
-      const newest = allFiles
-        .map((f) => ({ f, t: fs.statSync(path.join(TMP_DIR, f)).mtimeMs }))
-        .sort((a, b) => b.t - a.t)[0];
-      if (!newest) return res.status(500).json({ error: "Output file not found" });
-
-      const finalPath = path.join(TMP_DIR, newest.f);
-      const ext = path.extname(newest.f).slice(1) || "mp4";
-      const mime = ext === "mp3" ? "audio/mpeg" : "video/mp4";
-      return streamAndDelete(finalPath, res, `video.${ext}`, mime);
-    }
-
-    const finalPath = path.join(TMP_DIR, match);
-    const ext = path.extname(match).slice(1) || "mp4";
-    const mime = ext === "mp3" ? "audio/mpeg" : "video/mp4";
-    streamAndDelete(finalPath, res, `video.${ext}`, mime);
+    const ext = path.extname(finalPath).slice(1) || (wantsAudio ? "mp3" : "mp4");
+    const mime = wantsAudio || ext === "mp3" ? "audio/mpeg" : "video/mp4";
+    const downloadName = wantsAudio ? "audio.mp3" : `video.${ext}`;
+    streamAndDelete(finalPath, res, downloadName, mime);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -479,7 +471,7 @@ app.post("/download/audio", auth, async (req, res) => {
   const outFile = path.join(TMP_DIR, `audio_${Date.now()}.mp3`);
 
   try {
-    await ytdlp([
+    const stdout = await ytdlp([
       url,
       "--extract-audio", "--audio-format", "mp3",
       "--audio-quality", "0",
@@ -487,9 +479,11 @@ app.post("/download/audio", auth, async (req, res) => {
       "--no-playlist",
       "--max-filesize", "50m",
       "--user-agent", "Mozilla/5.0",
+      "--print", "after_move:filepath",
     ]);
 
-    streamAndDelete(outFile, res, "audio.mp3", "audio/mpeg");
+    const finalPath = lastNonEmptyLine(stdout) || outFile;
+    streamAndDelete(finalPath, res, "audio.mp3", "audio/mpeg");
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -60,6 +60,7 @@ POST /download/youtube
 Headers: x-api-key: YOUR_KEY
 Body: { "url": "https://youtube.com/...", "quality": "720p" }
 quality options: "best", "720p", "480p", "360p", "audio"
+Set "format": "mp3" or "output": "audio" for commands that should return audio instead of video.
 ```
 
 ### Download Audio (MP3)
