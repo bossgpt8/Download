@@ -26,8 +26,30 @@ const app = express();
 app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY || "bossbot-download-key";
+let cachedYoutubeDl;
+
+function resolveYoutubeDlPath() {
+  if (process.env.YT_DLP_PATH) return process.env.YT_DLP_PATH;
+
+  // Prefer the package-managed binary when available (local/dev installs).
+  const bundledBinary = path.join(
+    __dirname,
+    "node_modules",
+    "youtube-dl-exec",
+    "bin",
+    process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp",
+  );
+  if (fs.existsSync(bundledBinary)) return bundledBinary;
+
+  // Fallback to a globally available binary in PATH (common on Railway/Nix).
+  return "yt-dlp";
+}
+
 function getYoutubeDl() {
-  return createYoutubeDl(process.env.YT_DLP_PATH || "yt-dlp");
+  if (!cachedYoutubeDl) {
+    cachedYoutubeDl = createYoutubeDl(resolveYoutubeDlPath());
+  }
+  return cachedYoutubeDl;
 }
 
 // ── Middleware ────────────────────────────────────────────────────────────────
@@ -104,7 +126,11 @@ function ytdlp(commandArgs) {
     .exec(url, flags, { timeout: 120000 })
     .then(({ stdout }) => stdout.trim())
     .catch((err) => {
-      throw new Error(err.stderr?.trim() || err.message || `yt-dlp execution failed for URL: ${url}`);
+      const message = err.stderr?.trim() || err.message || `yt-dlp execution failed for URL: ${url}`;
+      if (/ENOENT|spawn\s+.*not\s+found|not found/i.test(message)) {
+        throw new Error("yt-dlp binary not found. Set YT_DLP_PATH to a valid yt-dlp path or ensure yt-dlp is available in PATH.");
+      }
+      throw new Error(message);
     });
 }
 
