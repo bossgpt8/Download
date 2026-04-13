@@ -24,6 +24,10 @@ git push -u origin main
    API_KEY = some-secret-key-you-choose
    PORT    = 3000
    ```
+  For YouTube bot checks, also add:
+  ```
+  YTDLP_COOKIES_FILE = /path/to/cookies.txt
+  ```
 6. Click **Deploy** — takes ~2 minutes
 
 ### Step 3 — Get your URL
@@ -122,6 +126,8 @@ npm test
 ```
 
 The test suite starts the server on a local port, uses a stub yt-dlp binary (no real network calls), and exercises the health-check and `/info` endpoint — including auth rejection and missing-param validation.
+
+If YouTube starts returning the sign-in / bot-check error, mount a valid Netscape cookies file and point `YTDLP_COOKIES_FILE` at it. The server now passes Node.js to yt-dlp as a JS runtime automatically.
 
 ## Railway Free Tier Limits
 - 512MB RAM

@@ -31,6 +31,7 @@ let cachedYoutubeDl;
 let cachedYtDlpDownload;
 const YT_DLP_DIR = path.join(os.tmpdir(), "boss-download-server");
 const LOCAL_YT_DLP = path.join(YT_DLP_DIR, process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp");
+const DEFAULT_JS_RUNTIME = `node:${process.execPath}`;
 
 function resolveYoutubeDlPath() {
   if (process.env.YT_DLP_PATH) return process.env.YT_DLP_PATH;
@@ -145,6 +146,17 @@ function runYtDlp(args) {
   });
 }
 
+function addYoutubeOptions(args, options = {}) {
+  args.push("--js-runtimes", options.jsRuntime || DEFAULT_JS_RUNTIME);
+
+  const cookiesFile = options.cookiesFile || process.env.YTDLP_COOKIES_FILE;
+  if (cookiesFile) {
+    args.push("--cookies", cookiesFile);
+  }
+
+  return args;
+}
+
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors({ origin: "*" }));
 app.use(express.json({ limit: "10mb" }));
@@ -186,7 +198,7 @@ setInterval(() => {
 }, 5 * 60 * 1000).unref();
 
 // ── Helper: run yt-dlp ────────────────────────────────────────────────────────
-function ytdlp(commandArgs) {
+function ytdlp(commandArgs, options = {}) {
   const [url, ...rawFlags] = commandArgs;
   const flags = {};
   const isFlagToken = (token) => /^--[a-zA-Z][a-zA-Z0-9-]*$/.test(token);
@@ -215,7 +227,10 @@ function ytdlp(commandArgs) {
     if (hasValue) i++;
   }
 
-  const args = [url];
+  const args = [];
+  addYoutubeOptions(args, options);
+  args.push(url);
+
   for (const [key, value] of Object.entries(flags)) {
     const flag = `--${key}`;
     if (Array.isArray(value)) {
