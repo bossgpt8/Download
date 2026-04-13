@@ -18,7 +18,7 @@ git push -u origin main
 1. Go to https://railway.app
 2. Click **New Project** → **Deploy from GitHub repo**
 3. Select your `boss-download-server` repo
-4. Railway auto-detects `nixpacks.toml` and installs `yt-dlp` + `ffmpeg`
+4. Railway auto-detects `nixpacks.toml`, downloads a standalone `yt-dlp` binary, and installs `ffmpeg`
 5. Go to **Variables** tab and add:
    ```
    API_KEY = some-secret-key-you-choose
@@ -129,7 +129,7 @@ The test suite starts the server on a local port, uses a stub yt-dlp binary (no 
 - Auto-sleeps after inactivity (wakes in ~2 seconds)
 
 ## Why Railway works (vs other platforms)
-- **Railway** = real Linux container with Nix → ffmpeg from Nix and a bundled yt-dlp binary from `youtube-dl-exec` ✅
+- **Railway** = real Linux container with Nix → ffmpeg from Nix and a standalone yt-dlp binary downloaded at build time ✅
 - **Vercel** = serverless, no system packages, 10s timeout ❌
 - **Render** = works but slower cold starts
 - **Heroku** = works with buildpacks but costs money

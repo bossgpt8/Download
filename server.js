@@ -1,6 +1,6 @@
 /**
  * Boss-Bot Download Server
- * Deploy on Railway — uses a bundled yt-dlp binary plus ffmpeg
+ * Deploy on Railway — uses a standalone yt-dlp binary plus ffmpeg
  *
  * Endpoints:
  *   GET  /                    — health check
@@ -16,11 +16,9 @@
 const express = require("express");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
-const { create: createYoutubeDl } = require("youtube-dl-exec");
 const fs = require("fs");
 const path = require("path");
-const https = require("https");
-const http = require("http");
+const { execFile } = require("child_process");
 
 const app = express();
 app.set("trust proxy", 1);
@@ -31,25 +29,35 @@ let cachedYoutubeDl;
 function resolveYoutubeDlPath() {
   if (process.env.YT_DLP_PATH) return process.env.YT_DLP_PATH;
 
-  // Prefer the package-managed binary when available (local/dev installs).
-  const bundledBinary = path.join(
-    __dirname,
-    "node_modules",
-    "youtube-dl-exec",
-    "bin",
-    process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp",
-  );
-  if (fs.existsSync(bundledBinary)) return bundledBinary;
+  const localBinary = path.join(__dirname, "bin", process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp");
+  if (fs.existsSync(localBinary)) return localBinary;
 
-  // Fallback to a globally available binary in PATH (common on Railway/Nix).
   return "yt-dlp";
 }
 
 function getYoutubeDl() {
-  if (!cachedYoutubeDl) {
-    cachedYoutubeDl = createYoutubeDl(resolveYoutubeDlPath());
-  }
+  if (!cachedYoutubeDl) cachedYoutubeDl = resolveYoutubeDlPath();
   return cachedYoutubeDl;
+}
+
+function runYtDlp(args) {
+  const binary = getYoutubeDl();
+
+  return new Promise((resolve, reject) => {
+    execFile(binary, args, { timeout: 120000, maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        const message = stderr?.trim() || error.message || `yt-dlp execution failed for URL: ${args[0]}`;
+        if (/ENOENT|spawn\s+.*not\s+found|not found/i.test(message)) {
+          reject(new Error("yt-dlp binary not found. Download the standalone binary or set YT_DLP_PATH to its path."));
+          return;
+        }
+        reject(new Error(message));
+        return;
+      }
+
+      resolve(stdout.trim());
+    });
+  });
 }
 
 // ── Middleware ────────────────────────────────────────────────────────────────
@@ -122,16 +130,22 @@ function ytdlp(commandArgs) {
     if (hasValue) i++;
   }
 
-  return getYoutubeDl()
-    .exec(url, flags, { timeout: 120000 })
-    .then(({ stdout }) => stdout.trim())
-    .catch((err) => {
-      const message = err.stderr?.trim() || err.message || `yt-dlp execution failed for URL: ${url}`;
-      if (/ENOENT|spawn\s+.*not\s+found|not found/i.test(message)) {
-        throw new Error("yt-dlp binary not found. Set YT_DLP_PATH to a valid yt-dlp path or ensure yt-dlp is available in PATH.");
+  const args = [url];
+  for (const [key, value] of Object.entries(flags)) {
+    const flag = `--${key}`;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        args.push(flag);
+        if (item !== true) args.push(String(item));
       }
-      throw new Error(message);
-    });
+      continue;
+    }
+
+    args.push(flag);
+    if (value !== true) args.push(String(value));
+  }
+
+  return runYtDlp(args);
 }
 
 // ── Helper: stream file to response then delete ───────────────────────────────

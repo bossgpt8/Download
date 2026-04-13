@@ -1,8 +1,8 @@
 [phases.setup]
-nixPkgs = ["ffmpeg"]
+nixPkgs = ["ffmpeg", "curl", "cacert"]
 
 [phases.install]
-cmds = ["npm install"]
+cmds = ["mkdir -p bin && curl -L --fail --silent --show-error https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o bin/yt-dlp && chmod +x bin/yt-dlp && npm install"]
 
 [start]
 cmd = "node server.js"
