@@ -2,7 +2,7 @@
 nixPkgs = ["ffmpeg", "curl", "cacert"]
 
 [phases.install]
-cmds = ["mkdir -p bin && curl -L --fail --silent --show-error https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o bin/yt-dlp && chmod +x bin/yt-dlp && npm install"]
+cmds = ["set -e; asset=yt-dlp_linux; case \"$(uname -m)\" in aarch64|arm64) asset=yt-dlp_linux_aarch64 ;; x86_64|amd64) asset=yt-dlp_linux ;; *) echo \"Unsupported architecture: $(uname -m)\"; exit 1 ;; esac; mkdir -p /tmp/boss-download-server; curl -L --fail --silent --show-error https://github.com/yt-dlp/yt-dlp/releases/latest/download/$asset -o /tmp/boss-download-server/yt-dlp && chmod +x /tmp/boss-download-server/yt-dlp && npm install"]
 
 [start]
 cmd = "node server.js"

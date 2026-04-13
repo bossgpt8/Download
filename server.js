@@ -18,6 +18,9 @@ const cors = require("cors");
 const rateLimit = require("express-rate-limit");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
+const https = require("https");
+const http = require("http");
 const { execFile } = require("child_process");
 
 const app = express();
@@ -25,12 +28,14 @@ app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY || "bossbot-download-key";
 let cachedYoutubeDl;
+let cachedYtDlpDownload;
+const YT_DLP_DIR = path.join(os.tmpdir(), "boss-download-server");
+const LOCAL_YT_DLP = path.join(YT_DLP_DIR, process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp");
 
 function resolveYoutubeDlPath() {
   if (process.env.YT_DLP_PATH) return process.env.YT_DLP_PATH;
 
-  const localBinary = path.join(__dirname, "bin", process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp");
-  if (fs.existsSync(localBinary)) return localBinary;
+  if (fs.existsSync(LOCAL_YT_DLP)) return LOCAL_YT_DLP;
 
   return "yt-dlp";
 }
@@ -40,23 +45,103 @@ function getYoutubeDl() {
   return cachedYoutubeDl;
 }
 
-function runYtDlp(args) {
-  const binary = getYoutubeDl();
+function getYtDlpReleaseUrl() {
+  if (process.platform === "win32") {
+    return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
+  }
 
+  if (process.platform === "darwin") {
+    return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos";
+  }
+
+  if (process.platform === "linux") {
+    if (process.arch === "x64" || process.arch === "amd64") {
+      return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux";
+    }
+
+    if (process.arch === "arm64") {
+      return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux_aarch64";
+    }
+  }
+
+  return null;
+}
+
+function downloadFile(url, destination) {
   return new Promise((resolve, reject) => {
-    execFile(binary, args, { timeout: 120000, maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) {
-        const message = stderr?.trim() || error.message || `yt-dlp execution failed for URL: ${args[0]}`;
-        if (/ENOENT|spawn\s+.*not\s+found|not found/i.test(message)) {
-          reject(new Error("yt-dlp binary not found. Download the standalone binary or set YT_DLP_PATH to its path."));
-          return;
-        }
-        reject(new Error(message));
+    const client = url.startsWith("https:") ? https : http;
+    const request = client.get(url, (response) => {
+      if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
+        response.resume();
+        downloadFile(new URL(response.headers.location, url).toString(), destination)
+          .then(resolve)
+          .catch(reject);
         return;
       }
 
-      resolve(stdout.trim());
+      if (response.statusCode !== 200) {
+        reject(new Error(`Failed to download yt-dlp from ${url} (${response.statusCode})`));
+        return;
+      }
+
+      fs.mkdirSync(path.dirname(destination), { recursive: true });
+      const file = fs.createWriteStream(destination);
+      response.pipe(file);
+      file.on("finish", () => file.close(() => resolve(destination)));
+      file.on("error", (error) => {
+        file.destroy();
+        reject(error);
+      });
     });
+
+    request.on("error", reject);
+  });
+}
+
+async function ensureYtDlpBinary() {
+  const configuredPath = process.env.YT_DLP_PATH;
+  if (configuredPath) return configuredPath;
+
+  if (fs.existsSync(LOCAL_YT_DLP)) {
+    fs.chmodSync(LOCAL_YT_DLP, 0o755);
+    return LOCAL_YT_DLP;
+  }
+
+  const releaseUrl = getYtDlpReleaseUrl();
+  if (!releaseUrl) return getYoutubeDl();
+
+  if (!cachedYtDlpDownload) {
+    cachedYtDlpDownload = downloadFile(releaseUrl, LOCAL_YT_DLP)
+      .then((binaryPath) => {
+        fs.chmodSync(binaryPath, 0o755);
+        return binaryPath;
+      })
+      .catch((error) => {
+        cachedYtDlpDownload = null;
+        throw error;
+      });
+  }
+
+  return cachedYtDlpDownload;
+}
+
+function runYtDlp(args) {
+  return new Promise((resolve, reject) => {
+    ensureYtDlpBinary()
+      .then((binary) => execFile(binary, args, { timeout: 120000, maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
+        if (error) {
+          const message = stderr?.trim() || error.message || `yt-dlp execution failed for URL: ${args[0]}`;
+          if (/ENOENT|spawn\s+.*not\s+found|not found/i.test(message)) {
+            reject(new Error("yt-dlp binary not found. Download the standalone Linux binary or set YT_DLP_PATH to its path."));
+            return;
+          }
+          reject(new Error(message));
+          return;
+        }
+
+        resolve(stdout.trim());
+      }))
+      .catch(reject);
   });
 }
 
