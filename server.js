@@ -161,18 +161,28 @@ function runYtDlp(args) {
   return new Promise((resolve, reject) => {
     ensureYtDlpBinary()
       .then((binary) => {
+        const isMissingBinaryError = (error, message) => {
+          const normalizedMessage = String(message || error?.message || "");
+          return error?.code === "ENOENT"
+            || /spawn\s+.*\sENOENT/i.test(normalizedMessage)
+            || /spawn\s+.*\snot\s+found/i.test(normalizedMessage)
+            || /executable file not found/i.test(normalizedMessage)
+            || /no such file or directory/i.test(normalizedMessage);
+        };
+
         const runOnce = (bin, canRetry) => {
           const child = execFile(bin, args, { timeout: 120000, maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
             if (error) {
               const message = stderr?.trim() || error.message || `yt-dlp execution failed for URL: ${args[0]}`;
-              if (canRetry && /ENOENT|spawn\s+.*not\s+found|not found/i.test(message)) {
+              const missingBinary = isMissingBinaryError(error, message);
+              if (canRetry && missingBinary) {
                 cachedYtDlpDownload = null;
                 ensureYtDlpBinary()
                   .then((freshBinary) => runOnce(freshBinary, false))
                   .catch(() => reject(new Error("yt-dlp binary not found. Download the standalone Linux binary or set YT_DLP_PATH to its path.")));
                 return;
               }
-              if (/ENOENT|spawn\s+.*not\s+found|not found/i.test(message)) {
+              if (missingBinary) {
                 reject(new Error("yt-dlp binary not found. Download the standalone Linux binary or set YT_DLP_PATH to its path."));
                 return;
               }
