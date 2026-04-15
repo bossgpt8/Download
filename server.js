@@ -32,6 +32,33 @@ let cachedYtDlpDownload;
 const YT_DLP_DIR = path.join(__dirname, ".cache", "boss-download-server");
 const LOCAL_YT_DLP = path.join(YT_DLP_DIR, process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp");
 const DEFAULT_JS_RUNTIME = `node:${process.execPath}`;
+const DEFAULT_COOKIES_PATH = path.join(os.tmpdir(), "yt-cookies.txt");
+
+function bootstrapCookiesFileFromEnv() {
+  const cookiesB64 = process.env.YTDLP_COOKIES_B64;
+  const cookiesText = process.env.YTDLP_COOKIES;
+  const configuredPath = process.env.YTDLP_COOKIES_FILE || DEFAULT_COOKIES_PATH;
+
+  if (!cookiesB64 && !cookiesText) {
+    return;
+  }
+
+  const decodedCookies = cookiesB64
+    ? Buffer.from(cookiesB64, "base64").toString("utf8")
+    : cookiesText;
+
+  if (!decodedCookies || !decodedCookies.includes("youtube.com")) {
+    throw new Error("Invalid YouTube cookies payload in environment variables");
+  }
+
+  fs.mkdirSync(path.dirname(configuredPath), { recursive: true });
+  fs.writeFileSync(configuredPath, decodedCookies, { encoding: "utf8", mode: 0o600 });
+  fs.chmodSync(configuredPath, 0o600);
+  process.env.YTDLP_COOKIES_FILE = configuredPath;
+  console.log("YouTube cookies loaded from environment secret.");
+}
+
+bootstrapCookiesFileFromEnv();
 
 function resolveYoutubeDlPath() {
   if (process.env.YT_DLP_PATH) return process.env.YT_DLP_PATH;
