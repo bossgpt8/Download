@@ -160,8 +160,8 @@ async function ensureYtDlpBinary() {
 function isMissingBinaryError(error, message) {
   const normalizedMessage = String(message || error?.message || "");
   return error?.code === "ENOENT"
-    || /spawn\s+.*\sENOENT/i.test(normalizedMessage)
-    || /spawn\s+.*\snot\s+found/i.test(normalizedMessage)
+    || /spawn\s+\S+\s+ENOENT/i.test(normalizedMessage)
+    || /spawn\s+\S+\s+not\s+found/i.test(normalizedMessage)
     || /executable file not found/i.test(normalizedMessage)
     || /no such file or directory/i.test(normalizedMessage);
 }
