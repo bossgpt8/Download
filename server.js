@@ -29,7 +29,7 @@ const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY || "bossbot-download-key";
 let cachedYoutubeDl;
 let cachedYtDlpDownload;
-const YT_DLP_DIR = path.join(os.tmpdir(), "boss-download-server");
+const YT_DLP_DIR = path.join(__dirname, ".cache", "boss-download-server");
 const LOCAL_YT_DLP = path.join(YT_DLP_DIR, process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp");
 const DEFAULT_JS_RUNTIME = `node:${process.execPath}`;
 
@@ -101,7 +101,10 @@ function downloadFile(url, destination) {
 
 async function ensureYtDlpBinary() {
   const configuredPath = process.env.YT_DLP_PATH;
-  if (configuredPath) return configuredPath;
+  if (configuredPath) {
+    if (fs.existsSync(configuredPath)) return configuredPath;
+    throw new Error(`YT_DLP_PATH is set but file was not found at: ${configuredPath}`);
+  }
 
   if (fs.existsSync(LOCAL_YT_DLP)) {
     fs.chmodSync(LOCAL_YT_DLP, 0o755);
@@ -112,6 +115,7 @@ async function ensureYtDlpBinary() {
   if (!releaseUrl) return getYoutubeDl();
 
   if (!cachedYtDlpDownload) {
+    fs.mkdirSync(YT_DLP_DIR, { recursive: true });
     cachedYtDlpDownload = downloadFile(releaseUrl, LOCAL_YT_DLP)
       .then((binaryPath) => {
         fs.chmodSync(binaryPath, 0o755);
@@ -130,29 +134,40 @@ function runYtDlp(args) {
   return new Promise((resolve, reject) => {
     ensureYtDlpBinary()
       .then((binary) => {
-        const child = execFile(binary, args, { timeout: 120000, maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
-          if (error) {
-            const message = stderr?.trim() || error.message || `yt-dlp execution failed for URL: ${args[0]}`;
-            if (/ENOENT|spawn\s+.*not\s+found|not found/i.test(message)) {
-              reject(new Error("yt-dlp binary not found. Download the standalone Linux binary or set YT_DLP_PATH to its path."));
+        const runOnce = (bin, canRetry) => {
+          const child = execFile(bin, args, { timeout: 120000, maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
+            if (error) {
+              const message = stderr?.trim() || error.message || `yt-dlp execution failed for URL: ${args[0]}`;
+              if (canRetry && /ENOENT|spawn\s+.*not\s+found|not found/i.test(message)) {
+                cachedYtDlpDownload = null;
+                ensureYtDlpBinary()
+                  .then((freshBinary) => runOnce(freshBinary, false))
+                  .catch(() => reject(new Error("yt-dlp binary not found. Download the standalone Linux binary or set YT_DLP_PATH to its path.")));
+                return;
+              }
+              if (/ENOENT|spawn\s+.*not\s+found|not found/i.test(message)) {
+                reject(new Error("yt-dlp binary not found. Download the standalone Linux binary or set YT_DLP_PATH to its path."));
+                return;
+              }
+              reject(new Error(`yt-dlp error: ${message}`));
               return;
             }
-            reject(new Error(`yt-dlp error: ${message}`));
-            return;
-          }
 
-          resolve(stdout.trim());
-        });
-        
-        // Log stderr for debugging even on success
-        if (child.stderr) {
-          child.stderr.on('data', (data) => {
-            const msg = data.toString().trim();
-            if (msg && !/^\[download\]|^\[info\]|^\[ffmpeg\]/i.test(msg)) {
-              console.error(`[yt-dlp stderr] ${msg}`);
-            }
+            resolve(stdout.trim());
           });
-        }
+
+          // Log stderr for debugging even on success
+          if (child.stderr) {
+            child.stderr.on("data", (data) => {
+              const msg = data.toString().trim();
+              if (msg && !/^\[download\]|^\[info\]|^\[ffmpeg\]/i.test(msg)) {
+                console.error(`[yt-dlp stderr] ${msg}`);
+              }
+            });
+          }
+        };
+
+        runOnce(binary, true);
       })
       .catch(reject);
   });
@@ -164,13 +179,13 @@ function addYoutubeOptions(args, options = {}) {
   const cookiesFile = options.cookiesFile || process.env.YTDLP_COOKIES_FILE;
   if (cookiesFile) {
     args.push("--cookies", cookiesFile);
-    // Add YouTube extractor args to help bypass bot detection
-    args.push(
-      "--extractor-args", "youtube:player_client=web",
-      "--socket-timeout", "30"
-    );
-
   }
+
+  // Add YouTube extractor args to help bypass bot detection
+  args.push(
+    "--extractor-args", "youtube:player_client=web",
+    "--socket-timeout", "30"
+  );
 
   return args;
 }
@@ -443,15 +458,15 @@ app.post("/download/youtube", auth, async (req, res) => {
 
   try {
     // Select format based on quality
-    let fmtSelector = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best";
+    let fmtSelector = "best[ext=mp4][vcodec!=none][acodec!=none]/best[vcodec!=none][acodec!=none]/best";
     if (wantsAudio) {
       fmtSelector = "bestaudio/best";
     } else if (quality === "360p") {
-      fmtSelector = "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[height<=360]/best";
+      fmtSelector = "best[height<=360][ext=mp4][vcodec!=none][acodec!=none]/best[height<=360][vcodec!=none][acodec!=none]/best[height<=360]";
     } else if (quality === "480p") {
-      fmtSelector = "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480]/best";
+      fmtSelector = "best[height<=480][ext=mp4][vcodec!=none][acodec!=none]/best[height<=480][vcodec!=none][acodec!=none]/best[height<=480]";
     } else if (quality === "720p") {
-      fmtSelector = "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best";
+      fmtSelector = "best[height<=720][ext=mp4][vcodec!=none][acodec!=none]/best[height<=720][vcodec!=none][acodec!=none]/best[height<=720]";
     }
 
     const args = [
@@ -467,8 +482,6 @@ app.post("/download/youtube", auth, async (req, res) => {
 
     if (wantsAudio) {
       args.push("--extract-audio", "--audio-format", "mp3", "--audio-quality", "0");
-    } else {
-      args.push("--merge-output-format", "mp4");
     }
 
     await ytdlp(args);
