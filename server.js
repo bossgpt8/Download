@@ -157,19 +157,19 @@ async function ensureYtDlpBinary() {
   return cachedYtDlpDownload;
 }
 
+function isMissingBinaryError(error, message) {
+  const normalizedMessage = String(message || error?.message || "");
+  return error?.code === "ENOENT"
+    || /spawn\s+.*\sENOENT/i.test(normalizedMessage)
+    || /spawn\s+.*\snot\s+found/i.test(normalizedMessage)
+    || /executable file not found/i.test(normalizedMessage)
+    || /no such file or directory/i.test(normalizedMessage);
+}
+
 function runYtDlp(args) {
   return new Promise((resolve, reject) => {
     ensureYtDlpBinary()
       .then((binary) => {
-        const isMissingBinaryError = (error, message) => {
-          const normalizedMessage = String(message || error?.message || "");
-          return error?.code === "ENOENT"
-            || /spawn\s+.*\sENOENT/i.test(normalizedMessage)
-            || /spawn\s+.*\snot\s+found/i.test(normalizedMessage)
-            || /executable file not found/i.test(normalizedMessage)
-            || /no such file or directory/i.test(normalizedMessage);
-        };
-
         const runOnce = (bin, canRetry) => {
           const child = execFile(bin, args, { timeout: 120000, maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
             if (error) {
