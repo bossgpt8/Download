@@ -388,7 +388,7 @@ const HEALTH_DATA = () => ({
   service: "Boss-Bot Download Server",
   version: "1.0.0",
   uptime: Math.floor(process.uptime()),
-  endpoints: ["/download/youtube", "/download/audio", "/download/facebook", "/download/instagram", "/download/tiktok", "/download/twitter", "/info"],
+  endpoints: ["/download/youtube", "/download/audio", "/download/song", "/download/facebook", "/download/instagram", "/download/tiktok", "/download/twitter", "/info"],
 });
 
 app.get("/", (req, res) => {
@@ -584,8 +584,7 @@ app.post("/download/youtube", auth, async (req, res) => {
   }
 });
 
-// ── POST /download/audio — extract audio as MP3 from any URL ─────────────────
-app.post("/download/audio", auth, async (req, res) => {
+async function handleAudioDownload(req, res) {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: "url is required" });
 
@@ -626,7 +625,13 @@ app.post("/download/audio", auth, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
+}
+
+// ── POST /download/audio — extract audio as MP3 from any URL ─────────────────
+app.post("/download/audio", auth, handleAudioDownload);
+
+// ── POST /download/song — compatibility alias for bots expecting /song ───────
+app.post("/download/song", auth, handleAudioDownload);
 
 // ── POST /download/facebook ───────────────────────────────────────────────────
 app.post("/download/facebook", auth, async (req, res) => {
