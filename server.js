@@ -608,7 +608,12 @@ async function handleAudioDownload(req, res) {
       "--user-agent", "Mozilla/5.0",
       "--quiet",
       "--no-warnings",
+      "--print", "after_move:filepath",
     ]);
+
+    if (fs.existsSync(outFile)) {
+      return streamAndDelete(outFile, res, "audio.mp3", "audio/mpeg");
+    }
 
     // Find the output file
     const files = fs.readdirSync(TMP_DIR);
