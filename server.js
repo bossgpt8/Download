@@ -585,15 +585,21 @@ app.post("/download/youtube", auth, async (req, res) => {
 });
 
 async function handleAudioDownload(req, res) {
-  const { url } = req.body;
-  if (!url) return res.status(400).json({ error: "url is required" });
+  const { url, query, q, text, song, title } = req.body || {};
+  const rawInput = (url || query || q || text || song || title || "").toString().trim();
+  if (!rawInput) {
+    return res.status(400).json({ error: "url or search query is required" });
+  }
+
+  const isLikelyUrl = /^https?:\/\//i.test(rawInput);
+  const mediaInput = isLikelyUrl ? rawInput : `ytsearch1:${rawInput}`;
 
   const timestamp = Date.now();
   const outFile = path.join(TMP_DIR, `audio_${timestamp}.mp3`);
 
   try {
     await ytdlp([
-      url,
+      mediaInput,
       "--extract-audio", "--audio-format", "mp3",
       "--audio-quality", "0",
       "--output", outFile,
