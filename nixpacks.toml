@@ -2,7 +2,7 @@
 nixPkgs = ["ffmpeg", "curl", "cacert"]
 
 [phases.install]
-cmds = ["set -e; asset=yt-dlp_linux; case \"$(uname -m)\" in aarch64|arm64) asset=yt-dlp_linux_aarch64 ;; x86_64|amd64) asset=yt-dlp_linux ;; *) echo \"Unsupported architecture: $(uname -m)\"; exit 1 ;; esac; mkdir -p /tmp/boss-download-server; curl -L --fail --silent --show-error https://github.com/yt-dlp/yt-dlp/releases/latest/download/$asset -o /tmp/boss-download-server/yt-dlp && chmod +x /tmp/boss-download-server/yt-dlp && npm install"]
+cmds = ["set -e; asset=yt-dlp_linux; case \"$(uname -m)\" in aarch64|arm64) asset=yt-dlp_linux_aarch64 ;; x86_64|amd64) asset=yt-dlp_linux ;; *) echo \"Unsupported architecture: $(uname -m)\"; exit 1 ;; esac; mkdir -p /tmp/boss-download-server; echo \"Downloading $asset from GitHub...\"; for attempt in 1 2 3; do curl -L --max-time 60 --connect-timeout 10 --retry 3 --retry-delay 2 https://github.com/yt-dlp/yt-dlp/releases/latest/download/$asset -o /tmp/boss-download-server/yt-dlp && break || (echo \"Attempt $attempt/3 failed, retrying...\"; sleep 5); done; chmod +x /tmp/boss-download-server/yt-dlp; echo \"yt-dlp installed successfully\"; /tmp/boss-download-server/yt-dlp --version; npm install"]
 
 [start]
 cmd = "node server.js"

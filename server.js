@@ -129,19 +129,31 @@ async function ensureYtDlpBinary() {
 function runYtDlp(args) {
   return new Promise((resolve, reject) => {
     ensureYtDlpBinary()
-      .then((binary) => execFile(binary, args, { timeout: 120000, maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
-        if (error) {
-          const message = stderr?.trim() || error.message || `yt-dlp execution failed for URL: ${args[0]}`;
-          if (/ENOENT|spawn\s+.*not\s+found|not found/i.test(message)) {
-            reject(new Error("yt-dlp binary not found. Download the standalone Linux binary or set YT_DLP_PATH to its path."));
+      .then((binary) => {
+        const child = execFile(binary, args, { timeout: 120000, maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
+          if (error) {
+            const message = stderr?.trim() || error.message || `yt-dlp execution failed for URL: ${args[0]}`;
+            if (/ENOENT|spawn\s+.*not\s+found|not found/i.test(message)) {
+              reject(new Error("yt-dlp binary not found. Download the standalone Linux binary or set YT_DLP_PATH to its path."));
+              return;
+            }
+            reject(new Error(`yt-dlp error: ${message}`));
             return;
           }
-          reject(new Error(message));
-          return;
-        }
 
-        resolve(stdout.trim());
-      }))
+          resolve(stdout.trim());
+        });
+        
+        // Log stderr for debugging even on success
+        if (child.stderr) {
+          child.stderr.on('data', (data) => {
+            const msg = data.toString().trim();
+            if (msg && !/^\[download\]|^\[info\]|^\[ffmpeg\]/i.test(msg)) {
+              console.error(`[yt-dlp stderr] ${msg}`);
+            }
+          });
+        }
+      })
       .catch(reject);
   });
 }
@@ -417,7 +429,8 @@ app.post("/download/youtube", auth, async (req, res) => {
   const { url, quality = "best", format = "mp4", output = "video" } = req.body;
   if (!url) return res.status(400).json({ error: "url is required" });
 
-  const outFile = path.join(TMP_DIR, `yt_${Date.now()}.%(ext)s`);
+  const timestamp = Date.now();
+  const outFile = path.join(TMP_DIR, `yt_${timestamp}.%(ext)s`);
   const wantsAudio = quality === "audio" || format === "mp3" || output === "audio";
 
   try {
@@ -426,11 +439,11 @@ app.post("/download/youtube", auth, async (req, res) => {
     if (wantsAudio) {
       fmtSelector = "bestaudio/best";
     } else if (quality === "360p") {
-      fmtSelector = "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[height<=360]";
+      fmtSelector = "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[height<=360]/best";
     } else if (quality === "480p") {
-      fmtSelector = "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480]";
+      fmtSelector = "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480]/best";
     } else if (quality === "720p") {
-      fmtSelector = "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]";
+      fmtSelector = "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best";
     }
 
     const args = [
@@ -440,19 +453,35 @@ app.post("/download/youtube", auth, async (req, res) => {
       "--no-playlist",
       "--max-filesize", "200m",
       "--user-agent", "Mozilla/5.0",
-      "--print", "after_move:filepath",
-      "--merge-output-format", "mp4",
+      "--quiet",
+      "--no-warnings",
     ];
 
     if (wantsAudio) {
       args.push("--extract-audio", "--audio-format", "mp3", "--audio-quality", "0");
     } else {
-      args.push("--recode-video", "mp4");
+      args.push("--merge-output-format", "mp4");
     }
 
-    const stdout = await ytdlp(args);
-    const finalPath = lastNonEmptyLine(stdout);
-    if (!finalPath) return res.status(500).json({ error: "Output file not found" });
+    await ytdlp(args);
+    
+    // Find the output file (fallback to directory scan)
+    const files = fs.readdirSync(TMP_DIR);
+    const timeWindow = timestamp.toString().slice(0, -3);
+    const outputFiles = files.filter(f => f.startsWith("yt_") && f.includes(timeWindow));
+    
+    let finalPath = null;
+    if (outputFiles.length > 0) {
+      // Get the most recent file
+      const newest = outputFiles
+        .map(f => ({ f, t: fs.statSync(path.join(TMP_DIR, f)).mtimeMs }))
+        .sort((a, b) => b.t - a.t)[0];
+      finalPath = path.join(TMP_DIR, newest.f);
+    }
+
+    if (!finalPath || !fs.existsSync(finalPath)) {
+      return res.status(500).json({ error: "Output file not found after download" });
+    }
 
     const ext = path.extname(finalPath).slice(1) || (wantsAudio ? "mp3" : "mp4");
     const mime = wantsAudio || ext === "mp3" ? "audio/mpeg" : "video/mp4";
@@ -468,10 +497,11 @@ app.post("/download/audio", auth, async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: "url is required" });
 
-  const outFile = path.join(TMP_DIR, `audio_${Date.now()}.mp3`);
+  const timestamp = Date.now();
+  const outFile = path.join(TMP_DIR, `audio_${timestamp}.mp3`);
 
   try {
-    const stdout = await ytdlp([
+    await ytdlp([
       url,
       "--extract-audio", "--audio-format", "mp3",
       "--audio-quality", "0",
@@ -479,10 +509,27 @@ app.post("/download/audio", auth, async (req, res) => {
       "--no-playlist",
       "--max-filesize", "50m",
       "--user-agent", "Mozilla/5.0",
-      "--print", "after_move:filepath",
+      "--quiet",
+      "--no-warnings",
     ]);
 
-    const finalPath = lastNonEmptyLine(stdout) || outFile;
+    // Find the output file
+    const files = fs.readdirSync(TMP_DIR);
+    const timeWindow = timestamp.toString().slice(0, -3);
+    const outputFiles = files.filter(f => f.startsWith("audio_") && f.includes(timeWindow));
+    
+    let finalPath = null;
+    if (outputFiles.length > 0) {
+      const newest = outputFiles
+        .map(f => ({ f, t: fs.statSync(path.join(TMP_DIR, f)).mtimeMs }))
+        .sort((a, b) => b.t - a.t)[0];
+      finalPath = path.join(TMP_DIR, newest.f);
+    }
+
+    if (!finalPath || !fs.existsSync(finalPath)) {
+      return res.status(500).json({ error: "Audio extraction failed - file not found" });
+    }
+
     streamAndDelete(finalPath, res, "audio.mp3", "audio/mpeg");
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -494,7 +541,8 @@ app.post("/download/facebook", auth, async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: "url is required" });
 
-  const outFile = path.join(TMP_DIR, `fb_${Date.now()}.mp4`);
+  const timestamp = Date.now();
+  const outFile = path.join(TMP_DIR, `fb_${timestamp}.%(ext)s`);
 
   try {
     await ytdlp([
@@ -502,13 +550,23 @@ app.post("/download/facebook", auth, async (req, res) => {
       "--output", outFile,
       "--no-playlist",
       "--max-filesize", "100m",
+      "--quiet",
+      "--no-warnings",
     ]);
 
+    // Find the output file  
     const files = fs.readdirSync(TMP_DIR);
-    const match = files.find((f) => f.startsWith(`fb_`) && f.includes(Date.now().toString().slice(0, -3)));
-    const newest = files.map((f) => ({ f, t: fs.statSync(path.join(TMP_DIR, f)).mtimeMs })).sort((a, b) => b.t - a.t)[0];
-    const finalPath = path.join(TMP_DIR, newest?.f || "");
-    if (!newest) return res.status(500).json({ error: "Output not found" });
+    const timeWindow = timestamp.toString().slice(0, -3);
+    const outputFiles = files.filter(f => f.startsWith("fb_") && f.includes(timeWindow));
+    
+    if (outputFiles.length === 0) {
+      return res.status(500).json({ error: "Facebook video download failed - file not created" });
+    }
+
+    const newest = outputFiles
+      .map(f => ({ f, t: fs.statSync(path.join(TMP_DIR, f)).mtimeMs }))
+      .sort((a, b) => b.t - a.t)[0];
+    const finalPath = path.join(TMP_DIR, newest.f);
 
     streamAndDelete(finalPath, res, "facebook_video.mp4", "video/mp4");
   } catch (err) {
@@ -521,7 +579,8 @@ app.post("/download/instagram", auth, async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: "url is required" });
 
-  const outFile = path.join(TMP_DIR, `ig_${Date.now()}.%(ext)s`);
+  const timestamp = Date.now();
+  const outFile = path.join(TMP_DIR, `ig_${timestamp}.%(ext)s`);
 
   try {
     await ytdlp([
@@ -529,12 +588,22 @@ app.post("/download/instagram", auth, async (req, res) => {
       "--output", outFile,
       "--no-playlist",
       "--max-filesize", "100m",
+      "--quiet",
+      "--no-warnings",
     ]);
 
+    // Find the output file
     const files = fs.readdirSync(TMP_DIR);
-    const newest = files.map((f) => ({ f, t: fs.statSync(path.join(TMP_DIR, f)).mtimeMs })).sort((a, b) => b.t - a.t)[0];
-    if (!newest) return res.status(500).json({ error: "Output not found" });
+    const timeWindow = timestamp.toString().slice(0, -3);
+    const outputFiles = files.filter(f => f.startsWith("ig_") && f.includes(timeWindow));
+    
+    if (outputFiles.length === 0) {
+      return res.status(500).json({ error: "Instagram video download failed - file not created" });
+    }
 
+    const newest = outputFiles
+      .map(f => ({ f, t: fs.statSync(path.join(TMP_DIR, f)).mtimeMs }))
+      .sort((a, b) => b.t - a.t)[0];
     const finalPath = path.join(TMP_DIR, newest.f);
     const ext = path.extname(newest.f).slice(1) || "mp4";
     streamAndDelete(finalPath, res, `instagram.${ext}`, "video/mp4");
@@ -548,7 +617,8 @@ app.post("/download/tiktok", auth, async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: "url is required" });
 
-  const outFile = path.join(TMP_DIR, `tt_${Date.now()}.%(ext)s`);
+  const timestamp = Date.now();
+  const outFile = path.join(TMP_DIR, `tt_${timestamp}.%(ext)s`);
 
   try {
     await ytdlp([
@@ -556,13 +626,22 @@ app.post("/download/tiktok", auth, async (req, res) => {
       "--output", outFile,
       "--no-playlist",
       "--max-filesize", "100m",
-      // TikTok needs cookies sometimes, try without first
+      "--quiet",
+      "--no-warnings",
     ]);
 
+    // Find the output file
     const files = fs.readdirSync(TMP_DIR);
-    const newest = files.map((f) => ({ f, t: fs.statSync(path.join(TMP_DIR, f)).mtimeMs })).sort((a, b) => b.t - a.t)[0];
-    if (!newest) return res.status(500).json({ error: "Output not found" });
+    const timeWindow = timestamp.toString().slice(0, -3);
+    const outputFiles = files.filter(f => f.startsWith("tt_") && f.includes(timeWindow));
+    
+    if (outputFiles.length === 0) {
+      return res.status(500).json({ error: "TikTok video download failed - file not created" });
+    }
 
+    const newest = outputFiles
+      .map(f => ({ f, t: fs.statSync(path.join(TMP_DIR, f)).mtimeMs }))
+      .sort((a, b) => b.t - a.t)[0];
     const finalPath = path.join(TMP_DIR, newest.f);
     streamAndDelete(finalPath, res, "tiktok.mp4", "video/mp4");
   } catch (err) {
@@ -575,7 +654,8 @@ app.post("/download/twitter", auth, async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: "url is required" });
 
-  const outFile = path.join(TMP_DIR, `tw_${Date.now()}.%(ext)s`);
+  const timestamp = Date.now();
+  const outFile = path.join(TMP_DIR, `tw_${timestamp}.%(ext)s`);
 
   try {
     await ytdlp([
@@ -583,12 +663,22 @@ app.post("/download/twitter", auth, async (req, res) => {
       "--output", outFile,
       "--no-playlist",
       "--max-filesize", "100m",
+      "--quiet",
+      "--no-warnings",
     ]);
 
+    // Find the output file
     const files = fs.readdirSync(TMP_DIR);
-    const newest = files.map((f) => ({ f, t: fs.statSync(path.join(TMP_DIR, f)).mtimeMs })).sort((a, b) => b.t - a.t)[0];
-    if (!newest) return res.status(500).json({ error: "Output not found" });
+    const timeWindow = timestamp.toString().slice(0, -3);
+    const outputFiles = files.filter(f => f.startsWith("tw_") && f.includes(timeWindow));
+    
+    if (outputFiles.length === 0) {
+      return res.status(500).json({ error: "Twitter video download failed - file not created" });
+    }
 
+    const newest = outputFiles
+      .map(f => ({ f, t: fs.statSync(path.join(TMP_DIR, f)).mtimeMs }))
+      .sort((a, b) => b.t - a.t)[0];
     const finalPath = path.join(TMP_DIR, newest.f);
     streamAndDelete(finalPath, res, "twitter.mp4", "video/mp4");
   } catch (err) {
