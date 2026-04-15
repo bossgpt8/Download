@@ -173,6 +173,10 @@ function runYtDlp(args) {
   });
 }
 
+function isYoutubeUrl(url) {
+  return /(^|\/\/)(www\.)?(youtube\.com|youtu\.be)\//i.test(String(url || ""));
+}
+
 function addYoutubeOptions(args, options = {}) {
   args.push("--js-runtimes", options.jsRuntime || DEFAULT_JS_RUNTIME);
 
@@ -182,10 +186,13 @@ function addYoutubeOptions(args, options = {}) {
   }
 
   // Add YouTube extractor args to help bypass bot detection
-  args.push(
-    "--extractor-args", "youtube:player_client=web",
-    "--socket-timeout", "30"
-  );
+  const extractorArgs = options.youtubeExtractorArgs || "youtube:player_client=web;player_skip=webpage,configs";
+  args.push("--extractor-args", extractorArgs);
+  args.push("--socket-timeout", options.socketTimeout || "30");
+
+  if (options.impersonate) {
+    args.push("--impersonate", options.impersonate);
+  }
 
   return args;
 }
@@ -260,25 +267,62 @@ function ytdlp(commandArgs, options = {}) {
     if (hasValue) i++;
   }
 
-  const args = [];
-  addYoutubeOptions(args, options);
-  args.push(url);
+  const buildArgs = (runOptions) => {
+    const args = [];
+    addYoutubeOptions(args, runOptions);
+    args.push(url);
 
-  for (const [key, value] of Object.entries(flags)) {
-    const flag = `--${key}`;
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        args.push(flag);
-        if (item !== true) args.push(String(item));
+    for (const [key, value] of Object.entries(flags)) {
+      const flag = `--${key}`;
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          args.push(flag);
+          if (item !== true) args.push(String(item));
+        }
+        continue;
       }
-      continue;
+
+      args.push(flag);
+      if (value !== true) args.push(String(value));
     }
 
-    args.push(flag);
-    if (value !== true) args.push(String(value));
+    return args;
+  };
+
+  // Non-cookie YouTube fallback strategy for bot-detection errors.
+  if (isYoutubeUrl(url) && options.enableYoutubeFallback !== false) {
+    const attempts = [
+      {
+        ...options,
+        youtubeExtractorArgs: "youtube:player_client=web;player_skip=webpage,configs",
+      },
+      {
+        ...options,
+        youtubeExtractorArgs: "youtube:player_client=android,web;player_skip=webpage,configs",
+        impersonate: "Chrome-131:Android-14",
+      },
+      {
+        ...options,
+        youtubeExtractorArgs: "youtube:player_client=mweb,web;player_skip=webpage,configs",
+        impersonate: "Safari-18.4:Macos-15",
+      },
+    ];
+
+    let attemptIndex = 0;
+    const runAttempt = () => runYtDlp(buildArgs(attempts[attemptIndex])).catch((error) => {
+      const message = String(error?.message || "");
+      const isBotCheck = /sign in to confirm you're not a bot|use --cookies|http error 429/i.test(message);
+      if (isBotCheck && attemptIndex < attempts.length - 1) {
+        attemptIndex += 1;
+        return runAttempt();
+      }
+      throw error;
+    });
+
+    return runAttempt();
   }
 
-  return runYtDlp(args);
+  return runYtDlp(buildArgs(options));
 }
 
 function lastNonEmptyLine(text) {
