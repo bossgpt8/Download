@@ -164,6 +164,12 @@ function addYoutubeOptions(args, options = {}) {
   const cookiesFile = options.cookiesFile || process.env.YTDLP_COOKIES_FILE;
   if (cookiesFile) {
     args.push("--cookies", cookiesFile);
+    // Add YouTube extractor args to help bypass bot detection
+    args.push(
+      "--extractor-args", "youtube:player_client=web",
+      "--socket-timeout", "30"
+    );
+
   }
 
   return args;
@@ -403,6 +409,8 @@ app.get("/info", auth, async (req, res) => {
     const json = await ytdlp([
       url, "--dump-json", "--no-playlist",
       "--user-agent", "Mozilla/5.0",
+      "--extractor-args", "youtube:player_client=web",
+      "--socket-timeout", "30",
     ]);
     const info = JSON.parse(json);
     res.json({
