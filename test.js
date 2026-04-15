@@ -48,6 +48,7 @@ process.env.API_KEY = TEST_KEY;
 process.env.YT_DLP_PATH = STUB_PATH;
 
 const app = require("./server");
+const { isMissingBinaryError } = app.__test__;
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
 function get(urlPath) {
@@ -193,6 +194,21 @@ describe("Boss-Bot Download Server", () => {
         req.end();
       });
       assert.strictEqual(status, 200);
+    });
+  });
+
+  describe("isMissingBinaryError", () => {
+    it("detects true missing binary errors", () => {
+      assert.equal(isMissingBinaryError({ code: "ENOENT" }, ""), true);
+      assert.equal(isMissingBinaryError(new Error("spawn yt-dlp ENOENT"), ""), true);
+      assert.equal(isMissingBinaryError(new Error("spawn yt-dlp not found"), ""), true);
+    });
+
+    it("does not misclassify generic runtime not found text", () => {
+      assert.equal(
+        isMissingBinaryError(new Error("Command failed"), "ERROR: HTTP Error 404: Not Found"),
+        false,
+      );
     });
   });
 });
