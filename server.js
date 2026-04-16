@@ -33,6 +33,12 @@ const YT_DLP_DIR = path.join(__dirname, ".cache", "boss-download-server");
 const LOCAL_YT_DLP = path.join(YT_DLP_DIR, process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp");
 const DEFAULT_JS_RUNTIME = `node:${process.execPath}`;
 const DEFAULT_COOKIES_PATH = path.join(os.tmpdir(), "yt-cookies.txt");
+const KNOWN_YT_DLP_PATHS = [
+  "/usr/local/bin/yt-dlp",
+  "/usr/bin/yt-dlp",
+  "/bin/yt-dlp",
+  "/opt/homebrew/bin/yt-dlp",
+];
 
 function bootstrapCookiesFileFromEnv() {
   const cookiesB64 = process.env.YTDLP_COOKIES_B64;
@@ -64,6 +70,10 @@ function resolveYoutubeDlPath() {
   if (process.env.YT_DLP_PATH) return process.env.YT_DLP_PATH;
 
   if (fs.existsSync(LOCAL_YT_DLP)) return LOCAL_YT_DLP;
+
+  const discovered = findExecutableInPath(process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp")
+    || KNOWN_YT_DLP_PATHS.find((candidate) => fs.existsSync(candidate));
+  if (discovered) return discovered;
 
   return "yt-dlp";
 }
@@ -126,6 +136,19 @@ function downloadFile(url, destination) {
   });
 }
 
+function findExecutableInPath(executable) {
+  const envPath = process.env.PATH || "";
+  const pathEntries = envPath.split(path.delimiter).filter(Boolean);
+  for (const entry of pathEntries) {
+    const candidate = path.join(entry, executable);
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch {}
+  }
+  return null;
+}
+
 async function ensureYtDlpBinary() {
   const configuredPath = process.env.YT_DLP_PATH;
   if (configuredPath) {
@@ -138,8 +161,13 @@ async function ensureYtDlpBinary() {
     return LOCAL_YT_DLP;
   }
 
+  const discoveredBinary = resolveYoutubeDlPath();
+  if (discoveredBinary && discoveredBinary !== "yt-dlp") {
+    return discoveredBinary;
+  }
+
   const releaseUrl = getYtDlpReleaseUrl();
-  if (!releaseUrl) return getYoutubeDl();
+  if (!releaseUrl) return discoveredBinary;
 
   if (!cachedYtDlpDownload) {
     fs.mkdirSync(YT_DLP_DIR, { recursive: true });
@@ -154,7 +182,15 @@ async function ensureYtDlpBinary() {
       });
   }
 
-  return cachedYtDlpDownload;
+  try {
+    return await cachedYtDlpDownload;
+  } catch (downloadError) {
+    const fallbackBinary = resolveYoutubeDlPath();
+    if (fallbackBinary && fallbackBinary !== LOCAL_YT_DLP) {
+      return fallbackBinary;
+    }
+    throw downloadError;
+  }
 }
 
 function isMissingBinaryError(error, message) {
@@ -813,4 +849,4 @@ if (require.main === module) {
 }
 
 module.exports = app;
-module.exports.__test__ = { isMissingBinaryError };
+module.exports.__test__ = { isMissingBinaryError, findExecutableInPath };
