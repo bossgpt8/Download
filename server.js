@@ -72,7 +72,7 @@ function resolveYoutubeDlPath() {
   if (fs.existsSync(LOCAL_YT_DLP)) return LOCAL_YT_DLP;
 
   const discovered = findExecutableInPath(process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp")
-    || KNOWN_YT_DLP_PATHS.find((candidate) => fs.existsSync(candidate));
+    || KNOWN_YT_DLP_PATHS.find((candidate) => isExecutableFile(candidate));
   if (discovered) return discovered;
 
   return "yt-dlp";
@@ -141,12 +141,21 @@ function findExecutableInPath(executable) {
   const pathEntries = envPath.split(path.delimiter).filter(Boolean);
   for (const entry of pathEntries) {
     const candidate = path.join(entry, executable);
-    try {
-      fs.accessSync(candidate, fs.constants.X_OK);
-      return candidate;
-    } catch {}
+    if (isExecutableFile(candidate)) return candidate;
   }
   return null;
+}
+
+function isExecutableFile(filePath) {
+  if (process.platform === "win32") {
+    return fs.existsSync(filePath);
+  }
+  try {
+    fs.accessSync(filePath, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function ensureYtDlpBinary() {
@@ -186,7 +195,6 @@ async function ensureYtDlpBinary() {
   try {
     return await cachedYtDlpDownload;
   } catch (downloadError) {
-    if (hasDiscoveredBinary) return discoveredBinary;
     throw downloadError;
   }
 }
