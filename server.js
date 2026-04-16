@@ -44,6 +44,18 @@ const KNOWN_YT_DLP_PATHS = process.platform === "win32"
       "/bin/yt-dlp",
       "/opt/homebrew/bin/yt-dlp",
     ];
+const KNOWN_FFMPEG_PATHS = process.platform === "win32"
+  ? [
+      "C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe",
+      "C:\\Program Files (x86)\\ffmpeg\\bin\\ffmpeg.exe",
+    ]
+  : [
+      "/usr/local/bin/ffmpeg",
+      "/usr/bin/ffmpeg",
+      "/bin/ffmpeg",
+      "/opt/homebrew/bin/ffmpeg",
+    ];
+let cachedFfmpegLocation = undefined;
 
 function bootstrapCookiesFileFromEnv() {
   const cookiesB64 = process.env.YTDLP_COOKIES_B64;
@@ -86,6 +98,37 @@ function resolveYoutubeDlPath() {
 function getYoutubeDl() {
   if (!cachedYoutubeDl) cachedYoutubeDl = resolveYoutubeDlPath();
   return cachedYoutubeDl;
+}
+
+function resolveFfmpegLocation() {
+  const configured = process.env.YTDLP_FFMPEG_LOCATION || process.env.FFMPEG_LOCATION;
+  if (configured) return configured;
+
+  const ffmpegExecutable = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
+  const ffprobeExecutable = process.platform === "win32" ? "ffprobe.exe" : "ffprobe";
+  const ffmpegPath = findExecutableInPath(ffmpegExecutable)
+    || KNOWN_FFMPEG_PATHS.find((candidate) => isExecutableFile(candidate));
+  if (!ffmpegPath) return null;
+
+  const ffmpegDirectory = path.dirname(ffmpegPath);
+  const ffprobeAtSameLocation = path.join(ffmpegDirectory, ffprobeExecutable);
+  if (isExecutableFile(ffprobeAtSameLocation)) {
+    return ffmpegDirectory;
+  }
+
+  const ffprobePath = findExecutableInPath(ffprobeExecutable);
+  if (ffprobePath && path.dirname(ffprobePath) === ffmpegDirectory) {
+    return ffmpegDirectory;
+  }
+
+  return null;
+}
+
+function getResolvedFfmpegLocation() {
+  if (cachedFfmpegLocation === undefined) {
+    cachedFfmpegLocation = resolveFfmpegLocation();
+  }
+  return cachedFfmpegLocation;
 }
 
 function getYtDlpReleaseUrl() {
@@ -356,6 +399,14 @@ function ytdlp(commandArgs, options = {}) {
   const buildArgs = (runOptions) => {
     const args = [];
     addYoutubeOptions(args, runOptions);
+    const hasManualFfmpegLocation = ["ffmpeg-location", "ffmpeg_location"]
+      .some((key) => Object.prototype.hasOwnProperty.call(flags, key));
+    if (!hasManualFfmpegLocation) {
+      const ffmpegLocation = runOptions.ffmpegLocation || getResolvedFfmpegLocation();
+      if (ffmpegLocation) {
+        args.push("--ffmpeg-location", ffmpegLocation);
+      }
+    }
     args.push(url);
 
     for (const [key, value] of Object.entries(flags)) {
@@ -862,4 +913,4 @@ if (require.main === module) {
 }
 
 module.exports = app;
-module.exports.__test__ = { isMissingBinaryError, findExecutableInPath };
+module.exports.__test__ = { isMissingBinaryError, findExecutableInPath, resolveFfmpegLocation };

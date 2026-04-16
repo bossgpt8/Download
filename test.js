@@ -48,7 +48,7 @@ process.env.API_KEY = TEST_KEY;
 process.env.YT_DLP_PATH = STUB_PATH;
 
 const app = require("./server");
-const { isMissingBinaryError, findExecutableInPath } = app.__test__;
+const { isMissingBinaryError, findExecutableInPath, resolveFfmpegLocation } = app.__test__;
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
 function get(urlPath) {
@@ -237,6 +237,50 @@ describe("Boss-Bot Download Server", () => {
         assert.strictEqual(findExecutableInPath("yt-dlp"), null);
       } finally {
         process.env.PATH = originalPath;
+      }
+    });
+  });
+
+  describe("resolveFfmpegLocation", () => {
+    it("prefers explicit ffmpeg location environment variable", () => {
+      const originalYtdlp = process.env.YTDLP_FFMPEG_LOCATION;
+      const originalFfmpeg = process.env.FFMPEG_LOCATION;
+      process.env.YTDLP_FFMPEG_LOCATION = "/custom/ffmpeg";
+      process.env.FFMPEG_LOCATION = "/custom/fallback";
+      try {
+        assert.strictEqual(resolveFfmpegLocation(), "/custom/ffmpeg");
+      } finally {
+        process.env.YTDLP_FFMPEG_LOCATION = originalYtdlp;
+        process.env.FFMPEG_LOCATION = originalFfmpeg;
+      }
+    });
+
+    it("returns a directory when ffmpeg and ffprobe are both available there", () => {
+      const fakeDir = path.join(TMP, "ffmpeg-bin");
+      fs.mkdirSync(fakeDir, { recursive: true });
+      const ffmpegName = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
+      const ffprobeName = process.platform === "win32" ? "ffprobe.exe" : "ffprobe";
+      const ffmpegPath = path.join(fakeDir, ffmpegName);
+      const ffprobePath = path.join(fakeDir, ffprobeName);
+      fs.writeFileSync(ffmpegPath, "#!/bin/sh\nexit 0\n", "utf8");
+      fs.writeFileSync(ffprobePath, "#!/bin/sh\nexit 0\n", "utf8");
+      if (process.platform !== "win32") {
+        fs.chmodSync(ffmpegPath, 0o755);
+        fs.chmodSync(ffprobePath, 0o755);
+      }
+
+      const originalPath = process.env.PATH;
+      const originalYtdlp = process.env.YTDLP_FFMPEG_LOCATION;
+      const originalFfmpeg = process.env.FFMPEG_LOCATION;
+      process.env.PATH = `${fakeDir}${path.delimiter}${originalPath || ""}`;
+      delete process.env.YTDLP_FFMPEG_LOCATION;
+      delete process.env.FFMPEG_LOCATION;
+      try {
+        assert.strictEqual(resolveFfmpegLocation(), fakeDir);
+      } finally {
+        process.env.PATH = originalPath;
+        process.env.YTDLP_FFMPEG_LOCATION = originalYtdlp;
+        process.env.FFMPEG_LOCATION = originalFfmpeg;
       }
     });
   });
