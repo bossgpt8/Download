@@ -162,12 +162,13 @@ async function ensureYtDlpBinary() {
   }
 
   const discoveredBinary = resolveYoutubeDlPath();
-  if (discoveredBinary && discoveredBinary !== "yt-dlp") {
-    return discoveredBinary;
-  }
+  const hasDiscoveredBinary = discoveredBinary && discoveredBinary !== "yt-dlp";
+  if (hasDiscoveredBinary) return discoveredBinary;
 
   const releaseUrl = getYtDlpReleaseUrl();
-  if (!releaseUrl) return discoveredBinary;
+  if (!releaseUrl) {
+    throw new Error("yt-dlp binary not found for this platform. Install yt-dlp or set YT_DLP_PATH.");
+  }
 
   if (!cachedYtDlpDownload) {
     fs.mkdirSync(YT_DLP_DIR, { recursive: true });
@@ -185,10 +186,7 @@ async function ensureYtDlpBinary() {
   try {
     return await cachedYtDlpDownload;
   } catch (downloadError) {
-    const fallbackBinary = resolveYoutubeDlPath();
-    if (fallbackBinary && fallbackBinary !== LOCAL_YT_DLP) {
-      return fallbackBinary;
-    }
+    if (hasDiscoveredBinary) return discoveredBinary;
     throw downloadError;
   }
 }
