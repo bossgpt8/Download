@@ -55,7 +55,7 @@ const KNOWN_FFMPEG_PATHS = process.platform === "win32"
       "/bin/ffmpeg",
       "/opt/homebrew/bin/ffmpeg",
     ];
-const RESOLVED_FFMPEG_LOCATION = resolveFfmpegLocation();
+let cachedFfmpegLocation = undefined;
 
 function bootstrapCookiesFileFromEnv() {
   const cookiesB64 = process.env.YTDLP_COOKIES_B64;
@@ -122,6 +122,13 @@ function resolveFfmpegLocation() {
   }
 
   return null;
+}
+
+function getResolvedFfmpegLocation() {
+  if (cachedFfmpegLocation === undefined) {
+    cachedFfmpegLocation = resolveFfmpegLocation();
+  }
+  return cachedFfmpegLocation;
 }
 
 function getYtDlpReleaseUrl() {
@@ -392,8 +399,10 @@ function ytdlp(commandArgs, options = {}) {
   const buildArgs = (runOptions) => {
     const args = [];
     addYoutubeOptions(args, runOptions);
-    if (!Object.prototype.hasOwnProperty.call(flags, "ffmpeg-location")) {
-      const ffmpegLocation = runOptions.ffmpegLocation || RESOLVED_FFMPEG_LOCATION;
+    const hasManualFfmpegLocation = ["ffmpeg-location", "ffmpeg_location"]
+      .some((key) => Object.prototype.hasOwnProperty.call(flags, key));
+    if (!hasManualFfmpegLocation) {
+      const ffmpegLocation = runOptions.ffmpegLocation || getResolvedFfmpegLocation();
       if (ffmpegLocation) {
         args.push("--ffmpeg-location", ffmpegLocation);
       }

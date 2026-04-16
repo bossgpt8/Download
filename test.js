@@ -264,8 +264,10 @@ describe("Boss-Bot Download Server", () => {
       const ffprobePath = path.join(fakeDir, ffprobeName);
       fs.writeFileSync(ffmpegPath, "#!/bin/sh\nexit 0\n", "utf8");
       fs.writeFileSync(ffprobePath, "#!/bin/sh\nexit 0\n", "utf8");
-      fs.chmodSync(ffmpegPath, 0o755);
-      fs.chmodSync(ffprobePath, 0o755);
+      if (process.platform !== "win32") {
+        fs.chmodSync(ffmpegPath, 0o755);
+        fs.chmodSync(ffprobePath, 0o755);
+      }
 
       const originalPath = process.env.PATH;
       const originalYtdlp = process.env.YTDLP_FFMPEG_LOCATION;
