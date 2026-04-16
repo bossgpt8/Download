@@ -28,6 +28,10 @@ git push -u origin main
   ```
   YTDLP_COOKIES_FILE = /path/to/cookies.txt
   ```
+  If ffmpeg is installed in a non-standard location, add:
+  ```
+  YTDLP_FFMPEG_LOCATION = /path/to/ffmpeg/bin
+  ```
 6. Click **Deploy** — takes ~2 minutes
 
 ### Step 3 — Get your URL
