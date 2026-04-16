@@ -232,7 +232,7 @@ describe("Boss-Bot Download Server", () => {
 
     it("returns null when executable is missing from PATH", () => {
       const originalPath = process.env.PATH;
-      process.env.PATH = path.join(TMP, "empty-path-dir");
+      process.env.PATH = "";
       try {
         assert.strictEqual(findExecutableInPath("yt-dlp"), null);
       } finally {

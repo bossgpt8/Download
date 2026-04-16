@@ -33,12 +33,17 @@ const YT_DLP_DIR = path.join(__dirname, ".cache", "boss-download-server");
 const LOCAL_YT_DLP = path.join(YT_DLP_DIR, process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp");
 const DEFAULT_JS_RUNTIME = `node:${process.execPath}`;
 const DEFAULT_COOKIES_PATH = path.join(os.tmpdir(), "yt-cookies.txt");
-const KNOWN_YT_DLP_PATHS = [
-  "/usr/local/bin/yt-dlp",
-  "/usr/bin/yt-dlp",
-  "/bin/yt-dlp",
-  "/opt/homebrew/bin/yt-dlp",
-];
+const KNOWN_YT_DLP_PATHS = process.platform === "win32"
+  ? [
+      "C:\\Program Files\\yt-dlp\\yt-dlp.exe",
+      "C:\\Program Files (x86)\\yt-dlp\\yt-dlp.exe",
+    ]
+  : [
+      "/usr/local/bin/yt-dlp",
+      "/usr/bin/yt-dlp",
+      "/bin/yt-dlp",
+      "/opt/homebrew/bin/yt-dlp",
+    ];
 
 function bootstrapCookiesFileFromEnv() {
   const cookiesB64 = process.env.YTDLP_COOKIES_B64;
@@ -148,7 +153,13 @@ function findExecutableInPath(executable) {
 
 function isExecutableFile(filePath) {
   if (process.platform === "win32") {
-    return fs.existsSync(filePath);
+    if (!/\.(exe|cmd|bat|com)$/i.test(filePath)) return false;
+    try {
+      const stat = fs.statSync(filePath);
+      return stat.isFile();
+    } catch {
+      return false;
+    }
   }
   try {
     fs.accessSync(filePath, fs.constants.X_OK);
