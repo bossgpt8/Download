@@ -153,7 +153,7 @@ function findExecutableInPath(executable) {
 
 function isExecutableFile(filePath) {
   if (process.platform === "win32") {
-    if (!/\.(exe|cmd|bat|com)$/i.test(filePath)) return false;
+    if (!/\.(exe|cmd|bat|com|ps1)$/i.test(filePath)) return false;
     try {
       const stat = fs.statSync(filePath);
       return stat.isFile();
@@ -187,7 +187,7 @@ async function ensureYtDlpBinary() {
 
   const releaseUrl = getYtDlpReleaseUrl();
   if (!releaseUrl) {
-    throw new Error("yt-dlp binary not found for this platform. Install yt-dlp or set YT_DLP_PATH.");
+    return getYoutubeDl();
   }
 
   if (!cachedYtDlpDownload) {
