@@ -192,11 +192,7 @@ async function ensureYtDlpBinary() {
       });
   }
 
-  try {
-    return await cachedYtDlpDownload;
-  } catch (downloadError) {
-    throw downloadError;
-  }
+  return cachedYtDlpDownload;
 }
 
 function isMissingBinaryError(error, message) {
