@@ -48,7 +48,7 @@ process.env.API_KEY = TEST_KEY;
 process.env.YT_DLP_PATH = STUB_PATH;
 
 const app = require("./server");
-const { isMissingBinaryError } = app.__test__;
+const { isMissingBinaryError, findExecutableInPath } = app.__test__;
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
 function get(urlPath) {
@@ -209,6 +209,35 @@ describe("Boss-Bot Download Server", () => {
         isMissingBinaryError(new Error("Command failed"), "ERROR: HTTP Error 404: Not Found"),
         false,
       );
+    });
+  });
+
+  describe("findExecutableInPath", () => {
+    it("finds an executable in PATH", () => {
+      const fakeDir = path.join(TMP, "path-bin");
+      fs.mkdirSync(fakeDir, { recursive: true });
+      const fakeBin = path.join(fakeDir, "yt-dlp");
+      fs.writeFileSync(fakeBin, "#!/bin/sh\nexit 0\n", "utf8");
+      fs.chmodSync(fakeBin, 0o755);
+
+      const originalPath = process.env.PATH;
+      process.env.PATH = `${fakeDir}${path.delimiter}${originalPath || ""}`;
+      try {
+        const resolved = findExecutableInPath("yt-dlp");
+        assert.strictEqual(resolved, fakeBin);
+      } finally {
+        process.env.PATH = originalPath;
+      }
+    });
+
+    it("returns null when executable is missing from PATH", () => {
+      const originalPath = process.env.PATH;
+      process.env.PATH = "";
+      try {
+        assert.strictEqual(findExecutableInPath("yt-dlp"), null);
+      } finally {
+        process.env.PATH = originalPath;
+      }
     });
   });
 });

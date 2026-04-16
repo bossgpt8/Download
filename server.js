@@ -33,6 +33,17 @@ const YT_DLP_DIR = path.join(__dirname, ".cache", "boss-download-server");
 const LOCAL_YT_DLP = path.join(YT_DLP_DIR, process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp");
 const DEFAULT_JS_RUNTIME = `node:${process.execPath}`;
 const DEFAULT_COOKIES_PATH = path.join(os.tmpdir(), "yt-cookies.txt");
+const KNOWN_YT_DLP_PATHS = process.platform === "win32"
+  ? [
+      "C:\\Program Files\\yt-dlp\\yt-dlp.exe",
+      "C:\\Program Files (x86)\\yt-dlp\\yt-dlp.exe",
+    ]
+  : [
+      "/usr/local/bin/yt-dlp",
+      "/usr/bin/yt-dlp",
+      "/bin/yt-dlp",
+      "/opt/homebrew/bin/yt-dlp",
+    ];
 
 function bootstrapCookiesFileFromEnv() {
   const cookiesB64 = process.env.YTDLP_COOKIES_B64;
@@ -64,6 +75,10 @@ function resolveYoutubeDlPath() {
   if (process.env.YT_DLP_PATH) return process.env.YT_DLP_PATH;
 
   if (fs.existsSync(LOCAL_YT_DLP)) return LOCAL_YT_DLP;
+
+  const discovered = findExecutableInPath(process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp")
+    || KNOWN_YT_DLP_PATHS.find((candidate) => isExecutableFile(candidate));
+  if (discovered) return discovered;
 
   return "yt-dlp";
 }
@@ -126,6 +141,34 @@ function downloadFile(url, destination) {
   });
 }
 
+function findExecutableInPath(executable) {
+  const envPath = process.env.PATH || "";
+  const pathEntries = envPath.split(path.delimiter).filter(Boolean);
+  for (const entry of pathEntries) {
+    const candidate = path.join(entry, executable);
+    if (isExecutableFile(candidate)) return candidate;
+  }
+  return null;
+}
+
+function isExecutableFile(filePath) {
+  if (process.platform === "win32") {
+    if (!/\.(exe|cmd|bat|com|ps1)$/i.test(filePath)) return false;
+    try {
+      const stat = fs.statSync(filePath);
+      return stat.isFile();
+    } catch {
+      return false;
+    }
+  }
+  try {
+    fs.accessSync(filePath, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function ensureYtDlpBinary() {
   const configuredPath = process.env.YT_DLP_PATH;
   if (configuredPath) {
@@ -138,8 +181,14 @@ async function ensureYtDlpBinary() {
     return LOCAL_YT_DLP;
   }
 
+  const discoveredBinary = resolveYoutubeDlPath();
+  const hasDiscoveredBinary = discoveredBinary && discoveredBinary !== "yt-dlp";
+  if (hasDiscoveredBinary) return discoveredBinary;
+
   const releaseUrl = getYtDlpReleaseUrl();
-  if (!releaseUrl) return getYoutubeDl();
+  if (!releaseUrl) {
+    return getYoutubeDl();
+  }
 
   if (!cachedYtDlpDownload) {
     fs.mkdirSync(YT_DLP_DIR, { recursive: true });
@@ -813,4 +862,4 @@ if (require.main === module) {
 }
 
 module.exports = app;
-module.exports.__test__ = { isMissingBinaryError };
+module.exports.__test__ = { isMissingBinaryError, findExecutableInPath };
