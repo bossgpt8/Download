@@ -55,6 +55,17 @@ const KNOWN_FFMPEG_PATHS = process.platform === "win32"
       "/bin/ffmpeg",
       "/opt/homebrew/bin/ffmpeg",
     ];
+const KNOWN_FFPROBE_PATHS = process.platform === "win32"
+  ? [
+      "C:\\Program Files\\ffmpeg\\bin\\ffprobe.exe",
+      "C:\\Program Files (x86)\\ffmpeg\\bin\\ffprobe.exe",
+    ]
+  : [
+      "/usr/local/bin/ffprobe",
+      "/usr/bin/ffprobe",
+      "/bin/ffprobe",
+      "/opt/homebrew/bin/ffprobe",
+    ];
 let cachedFfmpegLocation = undefined;
 
 function bootstrapCookiesFileFromEnv() {
@@ -116,12 +127,17 @@ function resolveFfmpegLocation() {
     return ffmpegDirectory;
   }
 
-  const ffprobePath = findExecutableInPath(ffprobeExecutable);
-  if (ffprobePath && path.dirname(ffprobePath) === ffmpegDirectory) {
+  const ffprobePath = findExecutableInPath(ffprobeExecutable)
+    || KNOWN_FFPROBE_PATHS.find((candidate) => isExecutableFile(candidate));
+  if (!ffprobePath) {
+    return null;
+  }
+
+  if (path.dirname(ffprobePath) === ffmpegDirectory) {
     return ffmpegDirectory;
   }
 
-  return null;
+  return ffmpegPath;
 }
 
 function getResolvedFfmpegLocation() {
