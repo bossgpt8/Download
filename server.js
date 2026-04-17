@@ -674,7 +674,7 @@ app.post("/download/youtube", auth, async (req, res) => {
     ];
 
     if (wantsAudio) {
-      args.push("--extract-audio", "--audio-format", "mp3", "--audio-quality", "0");
+      args.push("--extract-audio", "--audio-format", "mp3", "--audio-quality", "5");
     }
 
     await ytdlp(args);
@@ -723,7 +723,7 @@ async function handleAudioDownload(req, res) {
     const args = [
       mediaInput,
       "--extract-audio", "--audio-format", "mp3",
-      "--audio-quality", "0",
+      "--audio-quality", "5",
       "--output", outFile,
       "--no-playlist",
       "--max-filesize", "50m",
