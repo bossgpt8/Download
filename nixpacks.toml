@@ -1,8 +1,0 @@
-[phases.setup]
-nixPkgs = ["ffmpeg", "curl", "cacert"]
-
-[phases.install]
-cmds = ["set -e; asset=yt-dlp_linux; case \"$(uname -m)\" in aarch64|arm64) asset=yt-dlp_linux_aarch64 ;; x86_64|amd64) asset=yt-dlp_linux ;; *) echo \"Unsupported architecture: $(uname -m)\"; exit 1 ;; esac; echo \"Downloading $asset from GitHub...\"; for attempt in 1 2 3; do curl -L --max-time 60 --connect-timeout 10 --retry 3 --retry-delay 2 https://github.com/yt-dlp/yt-dlp/releases/latest/download/$asset -o /usr/local/bin/yt-dlp && break || (echo \"Attempt $attempt/3 failed, retrying...\"; sleep 5); done; chmod +x /usr/local/bin/yt-dlp; echo \"yt-dlp installed successfully\"; /usr/local/bin/yt-dlp --version; npm install"]
-
-[start]
-cmd = "node server.js"

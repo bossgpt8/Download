@@ -304,5 +304,37 @@ describe("Boss-Bot Download Server", () => {
         process.env.FFMPEG_LOCATION = originalFfmpeg;
       }
     });
+
+    it("returns ffmpeg executable path when ffprobe is available in a different directory", () => {
+      const ffmpegDir = path.join(TMP, "ffmpeg-only-bin");
+      const ffprobeDir = path.join(TMP, "ffprobe-only-bin");
+      fs.mkdirSync(ffmpegDir, { recursive: true });
+      fs.mkdirSync(ffprobeDir, { recursive: true });
+
+      const ffmpegName = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
+      const ffprobeName = process.platform === "win32" ? "ffprobe.exe" : "ffprobe";
+      const ffmpegPath = path.join(ffmpegDir, ffmpegName);
+      const ffprobePath = path.join(ffprobeDir, ffprobeName);
+      fs.writeFileSync(ffmpegPath, "#!/bin/sh\nexit 0\n", "utf8");
+      fs.writeFileSync(ffprobePath, "#!/bin/sh\nexit 0\n", "utf8");
+      if (process.platform !== "win32") {
+        fs.chmodSync(ffmpegPath, 0o755);
+        fs.chmodSync(ffprobePath, 0o755);
+      }
+
+      const originalPath = process.env.PATH;
+      const originalYtdlp = process.env.YTDLP_FFMPEG_LOCATION;
+      const originalFfmpeg = process.env.FFMPEG_LOCATION;
+      process.env.PATH = `${ffmpegDir}${path.delimiter}${ffprobeDir}${path.delimiter}${originalPath || ""}`;
+      delete process.env.YTDLP_FFMPEG_LOCATION;
+      delete process.env.FFMPEG_LOCATION;
+      try {
+        assert.strictEqual(resolveFfmpegLocation(), ffmpegPath);
+      } finally {
+        process.env.PATH = originalPath;
+        process.env.YTDLP_FFMPEG_LOCATION = originalYtdlp;
+        process.env.FFMPEG_LOCATION = originalFfmpeg;
+      }
+    });
   });
 });
