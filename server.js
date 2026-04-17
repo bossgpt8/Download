@@ -34,7 +34,11 @@ try {
   FFMPEG_PATH = execFileSync("which", ["ffmpeg"], { encoding: "utf8" }).trim();
 } catch {
   try {
-    const nixBin = execFileSync("sh", ["-c", "ls /nix/store/*/bin/ffmpeg 2>/dev/null | head -1"], { encoding: "utf8" }).trim();
+    const nixBin = execFileSync(
+      "find",
+      ["/nix/store", "-path", "*/bin/ffmpeg", "-print", "-quit"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
     if (nixBin) FFMPEG_PATH = nixBin;
   } catch {}
 }
@@ -260,7 +264,7 @@ async function ensureYtDlpBinary() {
 
 function isMissingBinaryError(error, message) {
   return error?.code === "ENOENT"
-    || /spawn\s+\S+\s+ENOENT/i.test(String(error?.message || ""));
+    || /spawn\s+.*?yt-dlp(?:\.exe)?\s+ENOENT/i.test(String(error?.message || ""));
 }
 
 function runYtDlp(args) {
