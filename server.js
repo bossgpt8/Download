@@ -21,7 +21,7 @@ const path = require("path");
 const os = require("os");
 const https = require("https");
 const http = require("http");
-const { execFile } = require("child_process");
+const { execFile, execFileSync } = require("child_process");
 
 const app = express();
 app.set("trust proxy", 1);
@@ -29,6 +29,19 @@ const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY || "bossbot-download-key";
 let cachedYoutubeDl;
 let cachedYtDlpDownload;
+let FFMPEG_PATH;
+try {
+  FFMPEG_PATH = execFileSync("which", ["ffmpeg"], { encoding: "utf8" }).trim();
+} catch {
+  try {
+    const nixBin = execFileSync(
+      "find",
+      ["/nix/store", "-path", "*/bin/ffmpeg", "-print", "-quit"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
+    if (nixBin) FFMPEG_PATH = nixBin;
+  } catch {}
+}
 const YT_DLP_DIR = path.join(__dirname, ".cache", "boss-download-server");
 const LOCAL_YT_DLP = path.join(YT_DLP_DIR, process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp");
 const DEFAULT_JS_RUNTIME = `node:${process.execPath}`;
@@ -250,12 +263,8 @@ async function ensureYtDlpBinary() {
 }
 
 function isMissingBinaryError(error, message) {
-  const normalizedMessage = String(message || error?.message || "");
   return error?.code === "ENOENT"
-    || /spawn\s+\S+\s+ENOENT/i.test(normalizedMessage)
-    || /spawn\s+\S+\s+not\s+found/i.test(normalizedMessage)
-    || /executable file not found/i.test(normalizedMessage)
-    || /no such file or directory/i.test(normalizedMessage);
+    || /spawn\s+.*?yt-dlp(?:\.exe)?\s+ENOENT/i.test(String(error?.message || ""));
 }
 
 function runYtDlp(args) {
@@ -708,7 +717,7 @@ async function handleAudioDownload(req, res) {
   const outFile = path.join(TMP_DIR, `audio_${timestamp}.mp3`);
 
   try {
-    await ytdlp([
+    const args = [
       mediaInput,
       "--extract-audio", "--audio-format", "mp3",
       "--audio-quality", "0",
@@ -719,7 +728,9 @@ async function handleAudioDownload(req, res) {
       "--quiet",
       "--no-warnings",
       "--print", "after_move:filepath",
-    ]);
+    ];
+    if (FFMPEG_PATH) args.push("--ffmpeg-location", FFMPEG_PATH);
+    await ytdlp(args);
 
     if (fs.existsSync(outFile)) {
       return streamAndDelete(outFile, res, "audio.mp3", "audio/mpeg");

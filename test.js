@@ -201,13 +201,34 @@ describe("Boss-Bot Download Server", () => {
     it("detects true missing binary errors", () => {
       assert.equal(isMissingBinaryError({ code: "ENOENT" }, ""), true);
       assert.equal(isMissingBinaryError(new Error("spawn yt-dlp ENOENT"), ""), true);
-      assert.equal(isMissingBinaryError(new Error("spawn yt-dlp not found"), ""), true);
+      assert.equal(isMissingBinaryError(new Error("spawn /usr/local/bin/yt-dlp ENOENT"), ""), true);
     });
 
     it("does not misclassify generic runtime not found text", () => {
       assert.equal(
         isMissingBinaryError(new Error("Command failed"), "ERROR: HTTP Error 404: Not Found"),
         false,
+      );
+    });
+
+    it("does not treat ffmpeg stderr missing-file text as missing yt-dlp binary", () => {
+      assert.equal(
+        isMissingBinaryError(new Error("Command failed"), "ffmpeg: No such file or directory"),
+        false,
+      );
+    });
+
+    it("does not treat non-yt-dlp spawn ENOENT text as missing yt-dlp binary", () => {
+      assert.equal(
+        isMissingBinaryError(new Error("spawn ffmpeg ENOENT"), ""),
+        false,
+      );
+    });
+
+    it("handles yt-dlp spawn ENOENT when binary path contains spaces", () => {
+      assert.equal(
+        isMissingBinaryError(new Error("spawn /Program Files/tools/yt-dlp.exe ENOENT"), ""),
+        true,
       );
     });
   });
