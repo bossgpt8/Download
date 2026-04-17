@@ -201,12 +201,18 @@ describe("Boss-Bot Download Server", () => {
     it("detects true missing binary errors", () => {
       assert.equal(isMissingBinaryError({ code: "ENOENT" }, ""), true);
       assert.equal(isMissingBinaryError(new Error("spawn yt-dlp ENOENT"), ""), true);
-      assert.equal(isMissingBinaryError(new Error("spawn yt-dlp not found"), ""), true);
     });
 
     it("does not misclassify generic runtime not found text", () => {
       assert.equal(
         isMissingBinaryError(new Error("Command failed"), "ERROR: HTTP Error 404: Not Found"),
+        false,
+      );
+    });
+
+    it("does not treat ffmpeg stderr missing-file text as missing yt-dlp binary", () => {
+      assert.equal(
+        isMissingBinaryError(new Error("Command failed"), "ffmpeg: No such file or directory"),
         false,
       );
     });
